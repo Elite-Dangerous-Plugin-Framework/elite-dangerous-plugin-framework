@@ -12,9 +12,12 @@
   "app": {
     "windows": [
       {
-        "title": "elite-dangerous-plugin-framework",
+        "label": "main",
+        "title": "Elite Dangerous Plugin Framework",
         "width": 800,
-        "height": 600
+        "height": 600,
+        "decorations": false,
+        "transparent": false
       }
     ],
     "security": {
