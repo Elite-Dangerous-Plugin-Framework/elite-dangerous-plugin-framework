@@ -1,26 +1,13 @@
 pub(crate) mod event_watchdog;
-use chrono::{DateTime, TimeDelta, Utc};
-use ed_journals::{
-    cargo::asynchronous::ReadCargoFileError,
-    journal::JournalEventKind,
-    logs::{blocking::LiveLogFileReader, LogDir, LogEvent, LogEventContent},
-};
-use serde::{Deserialize, Serialize};
-use std::{
-    collections::HashMap,
-    fmt::Debug,
-    fs::{self, DirEntry},
-    io,
-    path::PathBuf,
-    thread,
-    time::Duration,
-};
+pub(crate) mod plugins;
+use std::{collections::HashMap, sync::Mutex};
+
+use plugins::PluginsState;
 use tauri::{
     menu::{Menu, MenuBuilder, MenuItem, MenuItemBuilder, SubmenuBuilder},
     tray::TrayIconBuilder,
-    Emitter,
+    Emitter, Manager,
 };
-use tracing::{error, info, warn};
 
 // Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
 #[tauri::command]
@@ -31,8 +18,16 @@ fn greet(name: &str) -> String {
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
+        .plugin(tauri_plugin_store::Builder::new().build())
+        .plugin(tauri_plugin_single_instance::init(|app, _, _| {
+            let _ = app
+                .get_webview_window("main")
+                .expect("missing main window")
+                .set_focus();
+        }))
         .plugin(tauri_plugin_window_state::Builder::new().build())
         .setup(|app| {
+            app.manage(Mutex::new(PluginsState::new()));
             // big thanks to Ratul @ https://ratulmaharaj.com/posts/tauri-custom-menu/
             let quit_item = MenuItem::with_id(app, "edpf-quit", "Quit", true, None::<&str>)?;
             let settings = MenuItemBuilder::new("Settings")
