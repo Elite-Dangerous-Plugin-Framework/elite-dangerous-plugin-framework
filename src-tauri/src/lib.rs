@@ -1,8 +1,9 @@
 pub(crate) mod event_watchdog;
 pub(crate) mod plugins;
-use std::{collections::HashMap, sync::Mutex};
+use std::{collections::HashMap, env, sync::Mutex};
 
 use plugins::PluginsState;
+use sha2::Digest;
 use tauri::{
     menu::{Menu, MenuBuilder, MenuItem, MenuItemBuilder, SubmenuBuilder},
     tray::TrayIconBuilder,

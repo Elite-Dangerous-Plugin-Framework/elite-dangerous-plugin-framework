@@ -14,6 +14,7 @@ use tauri_plugin_store::StoreExt;
 use tracing::warn;
 
 pub(crate) mod commands;
+pub(crate) mod frontend_server;
 pub(crate) mod plugin_manifest;
 pub(crate) mod plugin_watchdog;
 
@@ -150,11 +151,17 @@ pub(crate) struct PluginState {
 #[derive(Debug, Serialize, Clone)]
 pub(crate) enum PluginCurrentState {
     Disabled,
+    Starting {
+        metadata: Vec<String>,
+    },
     FailedToStart {
         reasons: Vec<String>,
     },
     /// This will contain thread handles in the future
-    Running {},
+    Running {
+        frontend_path: PathBuf,
+        frontend_hash: String,
+    },
     /// This will contain blockers in the future
     Disabling {},
 }
