@@ -1,0 +1,12 @@
+[
+  {
+    "text": "Getting Started",
+    "link": "/guide/",
+    "activeMatch": "/guide/"
+  },
+  {
+    "text": "Developing Plugins",
+    "link": "/guide-dev/",
+    "activeMatch": "/guide-dev/"
+  }
+]
