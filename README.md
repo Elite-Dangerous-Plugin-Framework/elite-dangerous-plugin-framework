@@ -2,7 +2,7 @@
 
 **A cross-platform plugin runner for Elite: Dangerous 3rd party tooling**
 
-[Install Instructions](#todo) | [Writing Plugins](#todo)
+[Install Instructions](https://cmdr-wdx.github.io/elite-dangerous-plugin-framework/guide/index.html) | [Writing Plugins](https://cmdr-wdx.github.io/elite-dangerous-plugin-framework/guide-dev/index.html)
 
 # Roadmap
 
