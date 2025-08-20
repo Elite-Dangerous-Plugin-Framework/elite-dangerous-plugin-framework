@@ -11,6 +11,7 @@ export default defineConfig({
       compress: true, // Apply compression
     }),
   ],
+  base: "/elite-dangerous-plugin-framework/",
   root: path.join(__dirname, "docs"),
   title: "Elite: Dangerous Plugin Framework",
   icon: "/rspress-icon.png",
