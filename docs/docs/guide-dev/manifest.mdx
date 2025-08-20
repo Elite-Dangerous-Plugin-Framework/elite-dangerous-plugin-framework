@@ -1,0 +1,58 @@
+# The Manifest File
+
+Each plugin _must_ define a `manifest.json` file. If it's missing, the plugin is not recognized as such.
+
+Here is a TypeScript Interface Definition for the Manifest:
+
+```ts
+type PluginManifest = PluginManifestV1Alpha; // to be expanded later
+
+type PluginManifestV1Alpha = {
+  /// This is "constant" - tells us we have a v1alpha-spec'd Manifest
+  type: "v1alpha";
+  /// What is this plugin's name? This name shouldn't change over time as
+  /// the internal ID and plugin-stored settings are tied to it.
+  /// The internal name is derived from this name by replacing spaces with
+  /// dashes and removing any unsafe characters and making the remaining
+  /// characters lowercase.
+  name: string;
+  /// A short description about what this Plugin is doing.
+  description?: string | undefined;
+  /// optionally, a URL to the Git Repository
+  repository_url?: string | undefined;
+  /// optionally, a link where the user can get support. Can be a Discord
+  /// Link, Github Issues, etc.
+  support_url?: string | undefined;
+  /// each plugin has a default set of permissions like getting the current
+  /// full journal, getting the Status.json, Backpack.json, etc. + anything
+  /// a browser could do some plugins might need additional permissions,
+  /// e.g. File Read Access / Write Access
+  permissions?: PluginPermission[] | undefined;
+  /// Put a semantic version here (e.g. `0.0.1`). If missing, the version
+  /// `0.0.0-dev` is assumed.
+  version?: string | undefined;
+  /// A list of versions. This is ignored from the local file and only the
+  /// remote manifest is considered.
+  versions?: PluginVersionOption[];
+  /// This contains the strategy the plugin should take during updating to
+  /// find out if there is a new update. If missing, will not attempt to update.
+  remote_manifest?: PluginRemoteManifestResolutionStrategy | undefined;
+};
+```
+
+> Further Types are elaborated below:
+>
+> - [`PluginPermission`](#todo)
+> - [`PluginVersionOption`](#todo)
+> - [`PluginRemoteManifestResolutionStrategy`](#todo)
+
+
+This means that a minimal plugin manifest would look like this:
+
+```json
+{
+  "type": "v1alpha",
+  "name": "My Super Awesome Plugin"
+  // derived internal id: my-super-awesome-plugin
+}
+```
