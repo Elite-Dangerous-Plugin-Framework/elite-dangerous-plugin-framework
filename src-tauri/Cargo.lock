@@ -1005,6 +1005,7 @@ dependencies = [
  "get_dir_hash",
  "glob",
  "itertools",
+ "mime_guess",
  "serde",
  "serde_json",
  "sha2",

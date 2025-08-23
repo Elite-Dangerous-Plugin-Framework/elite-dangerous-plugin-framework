@@ -1,3 +1,4 @@
+#![feature(lock_value_accessors)]
 pub(crate) mod event_watchdog;
 pub(crate) mod plugins;
 use std::{collections::HashMap, env, sync::Mutex};
