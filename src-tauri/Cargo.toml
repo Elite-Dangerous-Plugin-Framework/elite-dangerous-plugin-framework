@@ -34,7 +34,6 @@ dirs = "6.0.0"
 anyhow = "1.0.98"
 glob = "0.3.2"
 itertools = "0.14.0"
-warp = "0.4.1"
 get_dir_hash = "0.1.0"
 flate2 = "1.1.2"
 tar = "0.4.44"
@@ -43,6 +42,9 @@ sha2 = "0.10.9"
 zip = "4.3.0"
 tokio = { version = "1.47.1", features = ["process"] }
 mime_guess = "2.0.5"
+axum = { version = "0.8.4", features = ["http2"] }
+tower = "0.5.2"
+tower-http = { version = "0.6.6", features = ["cors", "trace"] }
 
 [target.'cfg(not(any(target_os = "android", target_os = "ios")))'.dependencies]
 tauri-plugin-single-instance = "2"

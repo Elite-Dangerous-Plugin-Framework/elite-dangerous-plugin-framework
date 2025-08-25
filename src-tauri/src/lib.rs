@@ -1,15 +1,15 @@
-#![feature(lock_value_accessors)]
 pub(crate) mod event_watchdog;
 pub(crate) mod plugins;
-use std::{collections::HashMap, env, sync::Mutex};
+use std::{env, sync::Arc};
 
 use plugins::PluginsState;
-use sha2::Digest;
 use tauri::{
-    menu::{Menu, MenuBuilder, MenuItem, MenuItemBuilder, SubmenuBuilder},
+    menu::{MenuBuilder, MenuItem, MenuItemBuilder, SubmenuBuilder},
     tray::TrayIconBuilder,
-    Emitter, Manager,
+    Manager,
 };
+use tokio::sync::RwLock;
+use tracing::Instrument;
 
 // Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
 #[tauri::command]
@@ -29,7 +29,29 @@ pub fn run() {
         }))
         .plugin(tauri_plugin_window_state::Builder::new().build())
         .setup(|app| {
-            app.manage(Mutex::new(PluginsState::new()));
+            app.manage(Arc::new(RwLock::new(PluginsState::new())));
+            // Spawns the HTTP Server
+            let handle = app.app_handle().clone();
+            tauri::async_runtime::spawn(async move {
+                let _ = plugins::frontend_server::spawn_server_blocking(&handle).await;
+            });
+            let handle = app.app_handle().clone();
+            let reconciler_span = tracing::info_span!("plugin-reconciler");
+            tauri::async_runtime::spawn(
+                async move {
+                    let _ = plugins::spawn_reconciler_blocking(&handle).await;
+                }
+                .instrument(reconciler_span),
+            );
+            let handle = app.app_handle().clone();
+            let reconciler_span = tracing::info_span!("journal-watchdog");
+            tauri::async_runtime::spawn(
+                async move {
+                    let _ = event_watchdog::event_watchdog(handle).await;
+                }
+                .instrument(reconciler_span),
+            );
+
             // big thanks to Ratul @ https://ratulmaharaj.com/posts/tauri-custom-menu/
             let quit_item = MenuItem::with_id(app, "edpf-quit", "Quit", true, None::<&str>)?;
             let settings = MenuItemBuilder::new("Settings")
@@ -54,13 +76,11 @@ pub fn run() {
                 .item(&quit_item)
                 .build()?;
 
-            let tray = TrayIconBuilder::new()
+            TrayIconBuilder::new()
                 .icon(app.default_window_icon().unwrap().clone())
                 .menu(&menu)
                 .build(app)?;
 
-            let app_handle = app.handle();
-            event_watchdog::event_watchdog(app_handle);
             Ok(())
         })
         .plugin(tauri_plugin_opener::init())

@@ -3,139 +3,38 @@ use std::{
     fs::File,
     path::PathBuf,
     str::FromStr,
-    sync::{Arc, Mutex, RwLock},
+    sync::Arc,
+    time::Duration,
 };
 
 use anyhow::anyhow;
 use dirs::data_local_dir;
 use get_dir_hash::Options;
-use itertools::Itertools;
 use plugin_manifest::PluginManifest;
+use reconciler_utils::ReconcileAction;
 use serde::Serialize;
-use serde_json::json;
-use tauri::{AppHandle, Emitter, Manager, Wry};
+use tauri::{AppHandle, Manager, Wry};
 use tauri_plugin_store::StoreExt;
-use tracing::{error, warn};
+use tokio::{sync::RwLock, time::sleep};
+use tracing::{error, info};
 
 pub(crate) mod commands;
 pub(crate) mod frontend_server;
 pub(crate) mod plugin_manifest;
 pub(crate) mod plugin_watchdog;
+mod reconciler_utils;
 
-/// This enum is used as part of the reconciliation and tells us what the execution plan for a Plugin is.
-enum ReconcileAction {
-    /// Similar to [ReconcileAction::Start], except that the App doesn't yet know about the Plugin's State.  
-    /// This happens either during StartUp, or when a Plugin is added at Runtime.
-    ///
-    /// **NOTE**: [ReconcileAction::Adopt] is also used for disabled plugins. The reconciler logic has some special handling here, looking at the [PluginState::current_state] field.
-    /// if this field is [PluginCurrentState::Disabled], it wont bother to go through the startup procedure, and acts more as a "spawning" [ReconcileAction::SyncInPlace]
-    Adopt {
-        plugin_state: PluginState,
-        frontend_hash: String,
-    },
-    /// The plugin is inactive and should be started up.  
-    /// This means the HTTP Server will open up the route
-    /// and the frontend is notified about the plugin and will fetch the Web Component, inject it, and so on
-    Start {
-        frontend_hash: String,
-        plugin_id: String,
-    },
-    /// This plugin is currently running.  
-    /// The HTTP server is told to remove the plugin from its routing. The Web Component is notified about its imminent shutdown.
-    /// After that, it is removed from the UI
-    Stop { plugin_id: String },
-    /// Similar to [ReconcileAction::Stop], except that the App should "forget" about this plugin.
-    /// It will be dropped from the plugin state, meaning it wont show up in Settings / Installed Plugins.  
-    /// This action is taken when a plugin is deleted during runtime.
-    Drop { plugin_id: String },
-    /// Stops and Restarts the Plugin, using a new import identified.
-    /// Also adds in a patch to modify the previous state.  
-    /// This is mainly used to modify the Manifest file. [ReconcileAction::Restart] is usually used when the plugin is already running, while [ReconcileAction::SyncInPlace] is used when it is not running.
-    Restart {
-        plugin_id: String,
-        patch: Box<dyn FnMut(&mut PluginState)>,
-        frontend_hash: String,
-    },
-    /// This is an in-place update of the Plugin State, excluding anything else.
-    /// This is used if we have a deactivated plugin that had it's manifest updated.
-    /// This way, the metadata shown for a Plugin stays up-to-date
-    SyncInPlace {
-        plugin_id: String,
-        patch: Box<dyn FnMut(&mut PluginState)>,
-    },
-}
-
-impl ReconcileAction {
-    /// Applies the action.
-    ///
-    /// Responsible for modifying the PluginsState, modifying the HTTP Server config, and notifying to Frontend via an event that it should load/unload a plugin
-    fn apply(
-        self,
-        plugins_states: &mut PluginsState,
-        app_handle: &AppHandle<Wry>,
-    ) -> anyhow::Result<()> {
-        match self {
-            ReconcileAction::Adopt {
-                plugin_state,
-                frontend_hash,
-            } => {
-                let id = plugin_state.id();
-                plugins_states
-                    .plugin_states
-                    .insert(id.clone(), plugin_state);
-                // The rest is just essentially a Start action
-                ReconcileAction::Start {
-                    frontend_hash,
-                    plugin_id: id,
-                }
-                .apply(plugins_states, app_handle)
+pub(super) async fn spawn_reconciler_blocking(app_state: &AppHandle<Wry>) -> ! {
+    loop {
+        {
+            let state = app_state.state::<Arc<RwLock<PluginsState>>>();
+            info!("Running Plugin reconciler…");
+            let mut state = state.write().await;
+            if let Err(e) = state.reconcile(app_state).await {
+                error!("plugin state reconcile failed: {e}")
             }
-            ReconcileAction::Start {
-                frontend_hash,
-                plugin_id,
-            } => {
-                let state = match plugins_states.plugin_states.get_mut(&plugin_id) {
-                    None => {
-                        return Err(anyhow!("Received reconcile to start Plugin {}, but is missing in the plugins state", &plugin_id))
-                    },
-                    Some(x) => {x},
-                };
-
-                state.current_state = PluginCurrentState::Starting {
-                    metadata: vec![],
-                    frontend_hash: frontend_hash.clone(),
-                };
-
-                /*
-                The Frontend side listens for this event and will start the plugin
-                (or at least try to)
-                during start up it might invoke a command to push metadata.
-                once it has successfully
-                - await import(...)-ed the new module
-                - asserted the default import is an HTMLElement
-                - registered the Web Component
-                - spawned a new instance
-                - attached the instance to the DOM
-                it will push a completion command. The backend will set the state to Running
-                 */
-                app_handle.emit(
-                    "core.plugin.started",
-                    json!({
-                        plugin_id: plugin_id.clone(),
-                        frontend_hash: frontend_hash.clone(),
-                    }),
-                );
-                Ok(())
-            }
-            ReconcileAction::Stop { plugin_id } => todo!(),
-            ReconcileAction::Drop { plugin_id } => todo!(),
-            ReconcileAction::Restart {
-                plugin_id,
-                patch,
-                frontend_hash,
-            } => todo!(),
-            ReconcileAction::SyncInPlace { plugin_id, patch } => todo!(),
         }
+        sleep(Duration::from_secs(30)).await;
     }
 }
 
@@ -156,7 +55,7 @@ impl PluginsState {
     /// - fetch all user-provided and embedded plugins
     /// - look at the config to figure out which plugins are active
     /// - calls [PluginState::reconcile] for each plugin and notifies it if it should be started or not
-    async fn reconcile(&mut self, app_handle: AppHandle<Wry>) -> anyhow::Result<()> {
+    async fn reconcile(&mut self, app_handle: &AppHandle<Wry>) -> anyhow::Result<()> {
         let user_plugin_dir = app_handle
             .store("store.json")
             .map_err(|x| anyhow!("couldn't get store: {x}"))?
@@ -248,12 +147,22 @@ impl PluginsState {
             .iter()
             .filter(|x| !discovered_user_plugins.contains_key(x.as_str()))
         {
-            actions_map.insert(id.to_string(), ReconcileAction::Drop(id.clone()));
+            actions_map.insert(
+                id.to_string(),
+                ReconcileAction::Drop {
+                    plugin_id: id.clone(),
+                },
+            );
         }
 
         // At this point we know which actions need to be taken
         for (id, action) in actions_map.into_iter() {
-            if let Err(e) = action.apply(self, &app_handle) {}
+            if let Err(e) = action.apply(self, &app_handle) {
+                error!(
+                    "Failed to apply a plugin reconcile action for plugin {}: {}",
+                    id, e
+                )
+            }
         }
 
         Ok(())
@@ -337,11 +246,12 @@ impl PluginState {
         let current_plugin_state = match current_plugin_state {
             Some(x) => x,
             None => {
-                return match desired_plugin_state.current_state {
+                return match &desired_plugin_state.current_state {
                     // Plugin is not known yet. If we want it running, we have to spawn an adopt action.
-                    PluginCurrentState::Running { frontend_hash } => {
-                        Some(ReconcileAction::Adopt(desired_plugin_state.clone()))
-                    }
+                    PluginCurrentState::Running { frontend_hash } => Some(ReconcileAction::Adopt {
+                        plugin_state: Box::new(desired_plugin_state.clone()),
+                        frontend_hash: frontend_hash.clone(),
+                    }),
                     // else we still need to get the system to know about it
                     _ => None,
                 };
@@ -351,7 +261,8 @@ impl PluginState {
         let currently_running = match current_plugin_state.current_state {
             PluginCurrentState::Disabled
             | PluginCurrentState::Disabling {}
-            | PluginCurrentState::FailedToStart { .. } => false,
+            | PluginCurrentState::FailedToStart { .. }
+            | PluginCurrentState::Starting { .. } => false,
             _ => true,
         };
         let manifest_synced = current_plugin_state
@@ -369,40 +280,36 @@ impl PluginState {
             _ => None,
         };
 
-        if !currently_running && desired_plugin_state.current_state == PluginCurrentState::Disabled
-        {
-            // Not running and we dont want it to run -> keep disabled
-            // We can update the manifest if its out of sync though
-            if !manifest_synced {
-                return self.manifest = desired_plugin_state.manifest.clone();
-            }
-
-            return None;
-        }
-
         match (currently_running, &desired_plugin_state.current_state) {
             (true, PluginCurrentState::Disabled) => {
+                // We are currently running, but shouldn't be. Stop
+                Some(ReconcileAction::Stop {
+                    plugin_id: current_plugin_state.id(),
+                })
+            }
+            (true, PluginCurrentState::Starting { .. })
+            | (false, PluginCurrentState::Disabling {}) => {
+                // in states that indicate convergence towards the desired state. We do nothing
+                None
+            }
+            (true, PluginCurrentState::FailedToStart { reasons }) => todo!(),
+            (true, PluginCurrentState::Running { frontend_hash }) => todo!(),
+            (true, PluginCurrentState::Disabling {}) => todo!(),
+            (false, PluginCurrentState::Disabled) => {
                 // Not running and we dont want it to run -> keep disabled
                 // We can update the manifest if its out of sync though
                 if manifest_synced {
                     None
                 } else {
-                    Some(ReconcileAction::SyncInPlace(move |x| {
-                        x.manifest = desired_plugin_state.manifest.clone()
-                    }))
+                    let manifest = desired_plugin_state.manifest.clone();
+                    Some(ReconcileAction::SyncInPlace {
+                        plugin_id: current_plugin_state.id(),
+                        patch: Box::new(move |x| {
+                            x.manifest = (&manifest).clone();
+                        }),
+                    })
                 }
             }
-            (
-                true,
-                PluginCurrentState::Starting {
-                    metadata,
-                    frontend_hash,
-                },
-            ) => todo!(),
-            (true, PluginCurrentState::FailedToStart { reasons }) => todo!(),
-            (true, PluginCurrentState::Running { frontend_hash }) => todo!(),
-            (true, PluginCurrentState::Disabling {}) => todo!(),
-            (false, PluginCurrentState::Disabled) => todo!(),
             (
                 false,
                 PluginCurrentState::Starting {
