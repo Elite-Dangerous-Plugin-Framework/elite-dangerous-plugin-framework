@@ -1,18 +1,18 @@
 use chrono::{DateTime, TimeDelta, Utc};
-use ed_journals::logs::{LogEvent, LogEventContent};
+use ed_journals::logs::LogEventContent;
 use serde::{Deserialize, Serialize};
 use std::{
-    collections::HashMap,
     fmt::Debug,
     fs::{self, DirEntry},
     io,
     path::PathBuf,
+    sync::Arc,
     thread,
     time::Duration,
 };
 use tauri::{AppHandle, Emitter, Wry};
-use tokio::time::sleep;
-use tracing::{error, info, warn};
+use tokio::{sync::RwLock, time::sleep};
+use tracing::{error, info, info_span, warn, Instrument};
 
 pub(super) async fn event_watchdog(app_handle: AppHandle<Wry>) -> ! {
     // We spawn a background thread that is responsible to listen for changes to the journal directory.
@@ -26,9 +26,7 @@ pub(super) async fn event_watchdog(app_handle: AppHandle<Wry>) -> ! {
     // bit of an assumption that any "active" players received
     let mut last_checked_time = Utc::now() - TimeDelta::seconds(60 * 2);
     // a mapping of CMDR Name to what is considered the active journal file
-    let mut active_journal_files = bimap::BiMap::<String, PathBuf>::new();
-    // when spawning a new Sub-Thread, we create a new handle and put it here. Later on, we can abort that handle, which in turn finishes the listener
-    let mut active_handles = HashMap::new();
+    let active_journal_files = Arc::new(RwLock::new(bimap::BiMap::<String, PathBuf>::new()));
 
     loop {
         info!("Running Journal Watchdog…");
@@ -52,42 +50,66 @@ pub(super) async fn event_watchdog(app_handle: AppHandle<Wry>) -> ! {
                 }),
             };
         for (cmdr, file) in new_cmdr_journal_files {
-            match active_journal_files.insert(cmdr.clone(), file.clone()) {
-                bimap::Overwritten::Pair(_, _) => {
-                    // no need to do anything as this File is already being handled
-                }
-                _ => {
-                    let reader =
-                        match ed_journals::logs::blocking::LiveLogFileReader::open(file.clone()) {
-                            Ok(x) => x,
-                            Err(e) => {
-                                error!(
-                                    "Failed to create a reader for File {}: {e}",
-                                    file.display()
-                                );
-                                continue;
-                            }
-                        };
-                    let handle = reader.handle();
-                    if let Some(old_handle) = active_handles.insert(cmdr.clone(), handle) {
-                        // if here, this CMDR used to have a different handle. In this instance, we stop the previous handle, which in turn will stop the related thread
-                        old_handle.stop();
+            let active_journal_files = active_journal_files.clone();
+
+            if let bimap::Overwritten::Pair(_, _) = active_journal_files
+                .write()
+                .await
+                .insert(cmdr.clone(), file.clone())
+            {
+                // no need to do anything as this File is already being handled
+                continue; // continue to next file
+            }
+            // at this point the write lock is release again
+            let reader =
+                match ed_journals::logs::asynchronous::RawLiveLogFileReader::open(file.clone())
+                    .await
+                {
+                    Ok(x) => x,
+                    Err(e) => {
+                        error!("Failed to create a reader for File {}: {e}", file.display());
+                        continue;
                     }
-                    if let Err(e) = thread::Builder::new()
-                        .name(format!("edpf-journal-watchdog-{}", file.to_string_lossy()))
-                        .spawn({
-                            let app_handle = app_handle.clone();
-                            let file_clone = file.clone();
-                            move || {
-                                for event in reader {
-                                    match event {
-                                        Err(e) => warn!("failed to read event. skipping: {e}"),
-                                        Ok(log_event) => {
-                                            info!("{}", serde_json::to_string(&log_event).unwrap());
-                                            if let Err(e) = app_handle.emit(
+                };
+            let span = info_span!(
+                "journal-reader",
+                "cmdr" = cmdr.clone(),
+                "file" = format!("{}", file.display())
+            );
+            let app_handle = app_handle.clone();
+            tauri::async_runtime::spawn(async move {
+                        let file_clone = file.clone();
+                        let app_handle = app_handle;
+                        let cmdr = cmdr.clone();
+                        let mut reader = reader;
+
+                        loop {
+                            match reader.next().await {
+                                None => {
+                                    // This reader is done
+                                    break;
+                                },
+                                Some(x) => match x {
+                                    Err(e) => {
+                                        match e {
+                                            ed_journals::logs::asynchronous::LogFileReaderError::IO(error) => {
+                                                // IO Errors are deemed unrecoverable. Close the reader
+                                                active_journal_files.write().await.remove_by_right(&file_clone);
+                                                // ^ removing here means that the task will be recreated on the next reconcile
+                                                error!("IO Error trying to read Journal at {}. Dropping listener. Err: {error}", file_clone.display());
+                                                break
+                                            },
+                                            ed_journals::logs::asynchronous::LogFileReaderError::FailedToParseLine(error) => {
+                                            warn!("failed to read log entry. skipping line: {error}");
+
+                                            },
+                                        }
+                                    },
+                                    Ok(x) => {
+if let Err(e) = app_handle.emit(
                                                 "journal_events",
                                                 vec![LogEventWithContext {
-                                                    log_event,
+                                                    log_event: x,
                                                     source: file_clone.clone(),
                                                     cmdr: cmdr.clone(),
                                                 }],
@@ -97,21 +119,12 @@ pub(super) async fn event_watchdog(app_handle: AppHandle<Wry>) -> ! {
                                                     e
                                                 );
                                             }
-                                        }
-                                    }
-                                }
-                                info!("watchdog for {} is finished", file_clone.display())
+                                    },
+                                },
                             }
-                        })
-                    {
-                        error!(
-                            "Failed to spawn Thread to listen on File Changes on {}: {}",
-                            file.display(),
-                            e
-                        )
-                    }
-                }
-            }
+                        }
+
+                    }.instrument(span));
         }
         last_checked_time = Utc::now();
         info!("Sleeping in Watchdog…");
@@ -170,7 +183,7 @@ fn get_last_event_ts_and_name_from_log(
 /// An "enhanced" Log Entry containing where that log entry is from (which file), and who it belongs to
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub(crate) struct LogEventWithContext {
-    pub(crate) log_event: LogEvent,
+    pub(crate) log_event: serde_json::Value,
     pub(crate) source: PathBuf,
     pub(crate) cmdr: String,
 }
