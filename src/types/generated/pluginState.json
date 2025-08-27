@@ -1,0 +1,312 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "PluginState",
+  "description": "Defines the current state of the plugin. Mainly used for reconciliation and for the Frontend to display all plugins / specific plugin",
+  "type": "object",
+  "properties": {
+    "current_state": {
+      "$ref": "#/$defs/PluginCurrentState"
+    },
+    "manifest": {
+      "$ref": "#/$defs/PluginManifest"
+    },
+    "plugin_dir": {
+      "type": "string"
+    },
+    "source": {
+      "$ref": "#/$defs/PluginStateSource"
+    }
+  },
+  "required": [
+    "current_state",
+    "plugin_dir",
+    "manifest",
+    "source"
+  ],
+  "$defs": {
+    "PluginCurrentState": {
+      "oneOf": [
+        {
+          "type": "string",
+          "enum": [
+            "Disabled"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "Starting": {
+              "type": "object",
+              "properties": {
+                "frontend_hash": {
+                  "type": "string"
+                },
+                "metadata": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                }
+              },
+              "required": [
+                "metadata",
+                "frontend_hash"
+              ]
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "Starting"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "FailedToStart": {
+              "type": "object",
+              "properties": {
+                "reasons": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                }
+              },
+              "required": [
+                "reasons"
+              ]
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "FailedToStart"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "Running": {
+              "type": "object",
+              "properties": {
+                "frontend_hash": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "frontend_hash"
+              ]
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "Running"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "Disabling": {
+              "type": "object"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "Disabling"
+          ]
+        }
+      ]
+    },
+    "PluginManifest": {
+      "description": "Each Plugin must have a `manifest.json` which describes the plugin, it's requirements, updating strategies, and so on.",
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "type": "string",
+              "const": "v1alpha"
+            }
+          },
+          "$ref": "#/$defs/PluginManifestV1Alpha",
+          "required": [
+            "type"
+          ]
+        }
+      ]
+    },
+    "PluginManifestV1Alpha": {
+      "description": "Version 1alpha is the initial version that may introduce breaking changes.\nOnce the MVP is finished, this can be promoted to v1",
+      "type": "object",
+      "properties": {
+        "description": {
+          "description": "A short description about what this Plugin is doing",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "name": {
+          "description": "What is this plugin's name?\nThis name shouldn't change over time as the internal ID and plugin-stored settings are tied to it\nThe internal name is derived from this name by replacing spaces with dashes and removing any unsafe characters",
+          "type": "string"
+        },
+        "permissions": {
+          "description": "each plugin has a default set of permissions like getting the current full journal, getting the Status.json, Backpack.json, etc. + anything a browser could do\nsome plugins might need additional permissions, e.g. File Read Access / Write Access",
+          "type": [
+            "array",
+            "null"
+          ],
+          "items": {
+            "$ref": "#/$defs/PluginPermission"
+          }
+        },
+        "remote_manifest": {
+          "description": "This contains the strategy the plugin should take during updating to find out if there is a new update",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/PluginRemoteManifestResolutionStrategy"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "repository_url": {
+          "description": "optionally, a URL to the Git Repository",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "support_url": {
+          "description": "optionally, a link where the user can get support. Can be a Discord Link, Github Issues, etc.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "version": {
+          "description": "Put a semantic version here (e.g. `0.0.1`)",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "versions": {
+          "description": "A list of versions. This is ignored from the local file and only the remote manifest is considered. Look at [PluginManifest::remote_manifest]",
+          "type": [
+            "array",
+            "null"
+          ],
+          "items": {
+            "$ref": "#/$defs/PluginVersionOption"
+          }
+        }
+      },
+      "required": [
+        "name"
+      ]
+    },
+    "PluginPermission": {
+      "description": "Note: Permissions will be added as we go to cover more and more use cases. If there's something you need exposed for your plugin that is currently impossible, please don't hesitate to open an Issue",
+      "oneOf": [
+        {
+          "description": "Allow reading anything within the Journal Directory\nNote that this is not needed for listening for the most recent journal, but can be useful if you need to look at historic files",
+          "type": "string",
+          "const": "JournalDirReadAnyJournals"
+        }
+      ]
+    },
+    "PluginRemoteManifestResolutionStrategy": {
+      "oneOf": [
+        {
+          "description": "Assumes that each release also bundles a `manifest.json`.",
+          "type": "string",
+          "const": "GitReleaseAsset"
+        },
+        {
+          "description": "Will call a URL, expecting a manifest.json",
+          "type": "object",
+          "properties": {
+            "Http": {
+              "type": "object",
+              "properties": {
+                "address": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "address"
+              ]
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "Http"
+          ]
+        },
+        {
+          "description": "Use this if you publish your plugin to the registry",
+          "type": "string",
+          "const": "OfficialRegistry"
+        },
+        {
+          "description": "same as official registry, expect that you can point to a different registry",
+          "type": "object",
+          "properties": {
+            "UnofficialRegistry": {
+              "type": "object",
+              "properties": {
+                "address": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "address"
+              ]
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "UnofficialRegistry"
+          ]
+        }
+      ]
+    },
+    "PluginStateSource": {
+      "oneOf": [
+        {
+          "description": "User-provided plugins are taken from the\nUser-configured plugin directory.\n\nThe plugin dir defaults to [dirs::data_local_dir]/edpf-plugins\n\nIn here, we expect folders that contain a `manifest.json`. Only folders containing such a file are considered plugins",
+          "type": "string",
+          "const": "UserProvided"
+        },
+        {
+          "description": "This is an \"official\" plugin that is bundled into edpf\nWe use a virtual file system to load all relevant assets\n\nOther than that, embedded plugins are identical to User-provided ones",
+          "type": "string",
+          "const": "Embedded"
+        }
+      ]
+    },
+    "PluginVersionOption": {
+      "type": "object",
+      "properties": {
+        "download_url": {
+          "description": "Contains the full path to a tar / tgz / zip which contains the entire plugin folder.",
+          "type": "string"
+        },
+        "is_pre_release": {
+          "description": "users may opt into beta releases to test new features",
+          "type": "boolean"
+        },
+        "version": {
+          "description": "A semantic version (e.g. 1.2.3)",
+          "type": "string"
+        }
+      },
+      "required": [
+        "version",
+        "is_pre_release",
+        "download_url"
+      ]
+    }
+  }
+}

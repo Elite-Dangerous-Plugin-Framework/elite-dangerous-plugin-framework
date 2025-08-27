@@ -1,3 +1,6 @@
+use std::fmt;
+
+use serde::Serialize;
 use serde_json::json;
 use tauri::{AppHandle, Emitter, Wry};
 
@@ -5,6 +8,7 @@ use super::{PluginCurrentState, PluginState, PluginsState};
 use anyhow::anyhow;
 
 /// This enum is used as part of the reconciliation and tells us what the execution plan for a Plugin is.
+#[derive(Serialize)]
 pub(super) enum ReconcileAction {
     /// Similar to [ReconcileAction::Start], except that the App doesn't yet know about the Plugin's State.  
     /// This happens either during StartUp, or when a Plugin is added at Runtime.
@@ -35,6 +39,7 @@ pub(super) enum ReconcileAction {
     /// This is mainly used to modify the Manifest file. [ReconcileAction::Restart] is usually used when the plugin is already running, while [ReconcileAction::SyncInPlace] is used when it is not running.
     Restart {
         plugin_id: String,
+        #[serde(skip)]
         patch: Box<dyn FnMut(&mut PluginState)>,
         frontend_hash: String,
     },
@@ -43,8 +48,56 @@ pub(super) enum ReconcileAction {
     /// This way, the metadata shown for a Plugin stays up-to-date
     SyncInPlace {
         plugin_id: String,
+        #[serde(skip)]
         patch: Box<dyn FnMut(&mut PluginState)>,
     },
+}
+
+impl fmt::Debug for ReconcileAction {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Adopt {
+                plugin_state,
+                frontend_hash,
+            } => f
+                .debug_struct("Adopt")
+                .field("plugin_state", plugin_state)
+                .field("frontend_hash", frontend_hash)
+                .finish(),
+            Self::Start {
+                frontend_hash,
+                plugin_id,
+            } => f
+                .debug_struct("Start")
+                .field("frontend_hash", frontend_hash)
+                .field("plugin_id", plugin_id)
+                .finish(),
+            Self::Stop { plugin_id } => f
+                .debug_struct("Stop")
+                .field("plugin_id", plugin_id)
+                .finish(),
+            Self::Drop { plugin_id } => f
+                .debug_struct("Drop")
+                .field("plugin_id", plugin_id)
+                .finish(),
+            Self::Restart {
+                plugin_id,
+                patch: _,
+                frontend_hash,
+            } => f
+                .debug_struct("Restart")
+                .field("plugin_id", plugin_id)
+                .field("frontend_hash", frontend_hash)
+                .finish(),
+            Self::SyncInPlace {
+                plugin_id,
+                patch: _,
+            } => f
+                .debug_struct("SyncInPlace")
+                .field("plugin_id", plugin_id)
+                .finish(),
+        }
+    }
 }
 
 impl ReconcileAction {

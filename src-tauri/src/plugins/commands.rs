@@ -1,17 +1,19 @@
-use std::{fs::File, path::PathBuf, str::FromStr};
+use std::sync::Arc;
 
-use dirs::data_local_dir;
-use itertools::Itertools;
-use tauri::Runtime;
-use tauri_plugin_store::StoreExt;
-use tracing::error;
+use tauri::{Manager, Runtime};
+use tokio::sync::RwLock;
 
-use super::plugin_manifest::PluginManifest;
+use super::PluginsState;
 
 #[tauri::command]
 pub(crate) async fn fetch_all_plugins<R: Runtime>(
     app: tauri::AppHandle<R>,
-    window: tauri::Window<R>,
-) -> Result<(), String> {
-    todo!()
+    _window: tauri::Window<R>,
+) -> Result<serde_json::Value, String> {
+    let state = app.state::<Arc<RwLock<PluginsState>>>();
+    let data = state.read().await;
+
+    let resp: Result<serde_json::Value, String> =
+        serde_json::to_value(&data.plugin_states).map_err(|x| format!("failed to serialize: {x}"));
+    resp
 }

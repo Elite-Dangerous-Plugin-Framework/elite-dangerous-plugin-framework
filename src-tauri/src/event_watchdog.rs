@@ -78,56 +78,55 @@ pub(super) async fn event_watchdog(app_handle: AppHandle<Wry>) -> ! {
             );
             let app_handle = app_handle.clone();
             tauri::async_runtime::spawn(async move {
-                        let file_clone = file.clone();
-                        let app_handle = app_handle;
-                        let cmdr = cmdr.clone();
-                        let mut reader = reader;
+                let file_clone = file.clone();
+                let app_handle = app_handle;
+                let cmdr = cmdr.clone();
+                let mut reader = reader;
 
-                        loop {
-                            match reader.next().await {
-                                None => {
-                                    // This reader is done
-                                    break;
-                                },
-                                Some(x) => match x {
-                                    Err(e) => {
-                                        match e {
-                                            ed_journals::logs::asynchronous::LogFileReaderError::IO(error) => {
-                                                // IO Errors are deemed unrecoverable. Close the reader
-                                                active_journal_files.write().await.remove_by_right(&file_clone);
-                                                // ^ removing here means that the task will be recreated on the next reconcile
-                                                error!("IO Error trying to read Journal at {}. Dropping listener. Err: {error}", file_clone.display());
-                                                break
-                                            },
-                                            ed_journals::logs::asynchronous::LogFileReaderError::FailedToParseLine(error) => {
-                                            warn!("failed to read log entry. skipping line: {error}");
-
-                                            },
-                                        }
+                loop {
+                    match reader.next().await {
+                        None => {
+                            // This reader is done
+                            break;
+                        },
+                        Some(x) => match x {
+                            Err(e) => {
+                                match e {
+                                    ed_journals::logs::asynchronous::LogFileReaderError::IO(error) => {
+                                        // IO Errors are deemed unrecoverable. Close the reader
+                                        active_journal_files.write().await.remove_by_right(&file_clone);
+                                        // ^ removing here means that the task will be recreated on the next reconcile
+                                        error!("IO Error trying to read Journal at {}. Dropping listener. Err: {error}", file_clone.display());
+                                        break
                                     },
-                                    Ok(x) => {
-if let Err(e) = app_handle.emit(
-                                                "journal_events",
-                                                vec![LogEventWithContext {
-                                                    log_event: x,
-                                                    source: file_clone.clone(),
-                                                    cmdr: cmdr.clone(),
-                                                }],
-                                            ) {
-                                                warn!(
-                                                    "failed to emit journal_events message: {}",
-                                                    e
-                                                );
-                                            }
-                                    },
-                                },
-                            }
-                        }
+                                    ed_journals::logs::asynchronous::LogFileReaderError::FailedToParseLine(error) => {
+                                    warn!("failed to read log entry. skipping line: {error}");
 
-                    }.instrument(span));
+                                    },
+                                }
+                            },
+                            Ok(x) => {
+                                if let Err(e) = app_handle.emit(
+                                    "journal_events",
+                                    vec![LogEventWithContext {
+                                        log_event: x,
+                                        source: file_clone.clone(),
+                                        cmdr: cmdr.clone(),
+                                    }],
+                                ) {
+                                    warn!(
+                                        "failed to emit journal_events message: {}",
+                                        e
+                                    );
+                                }
+                            },
+                        },
+                    }
+                }
+
+            }.instrument(span));
         }
         last_checked_time = Utc::now();
-        info!("Sleeping in Watchdog…");
         _ = sleep(Duration::from_secs(30)).await;
     }
 }

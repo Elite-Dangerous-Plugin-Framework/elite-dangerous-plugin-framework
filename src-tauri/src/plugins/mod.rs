@@ -12,16 +12,16 @@ use dirs::data_local_dir;
 use get_dir_hash::Options;
 use plugin_manifest::PluginManifest;
 use reconciler_utils::ReconcileAction;
+use schemars::JsonSchema;
 use serde::Serialize;
 use tauri::{AppHandle, Manager, Wry};
 use tauri_plugin_store::StoreExt;
 use tokio::{sync::RwLock, time::sleep};
-use tracing::{error, info};
+use tracing::{debug, error, info, instrument};
 
 pub(crate) mod commands;
 pub(crate) mod frontend_server;
 pub(crate) mod plugin_manifest;
-pub(crate) mod plugin_watchdog;
 mod reconciler_utils;
 
 pub(super) async fn spawn_reconciler_blocking(app_state: &AppHandle<Wry>) -> ! {
@@ -79,7 +79,6 @@ impl PluginsState {
         let user_plugin_manifests_from_dir =
             glob::glob(user_plugin_dir.join("*/manifest.json").to_str().unwrap())
                 .map_err(|x| anyhow!("failed to get user plugin manifests: {x}"))?;
-
         // This is what we know internally
         // We need this to stop plugins that were deleted between the last reconcile and now
         let known_user_plugin_ids: HashSet<_> = self
@@ -99,10 +98,16 @@ impl PluginsState {
             let manifest = match PluginState::get_manifest(&path) {
                 Ok(x) => x,
                 Err(e) => {
+                    error!(
+                        "failed to get plugin manifest at {}: {}",
+                        path.display(),
+                        &e
+                    );
                     failed_path_bufs.push((path, e));
                     continue;
                 }
             };
+            debug!("found valid manifest @ {}", path.display());
 
             let frontend_hash = PluginState::get_frontend_dir_hash(&path);
             let desired_state = PluginState {
@@ -142,6 +147,12 @@ impl PluginsState {
             }
         }
 
+        let action_plan = serde_json::to_string(&actions_map).unwrap();
+        info!(
+            "Planned reconcile actions: {action_plan}, dir: {}",
+            user_plugin_dir.display()
+        );
+
         // We STOP any plugin that was deleted or broke for some reason
         for id in known_user_plugin_ids
             .iter()
@@ -157,7 +168,7 @@ impl PluginsState {
 
         // At this point we know which actions need to be taken
         for (id, action) in actions_map.into_iter() {
-            if let Err(e) = action.apply(self, &app_handle) {
+            if let Err(e) = action.apply(self, app_handle) {
                 error!(
                     "Failed to apply a plugin reconcile action for plugin {}: {}",
                     id, e
@@ -170,7 +181,7 @@ impl PluginsState {
 }
 
 /// Defines the current state of the plugin. Mainly used for reconciliation and for the Frontend to display all plugins / specific plugin
-#[derive(Debug, Serialize, Clone)]
+#[derive(Debug, Serialize, Clone, JsonSchema)]
 pub(crate) struct PluginState {
     current_state: PluginCurrentState,
     plugin_dir: PathBuf,
@@ -178,7 +189,7 @@ pub(crate) struct PluginState {
     source: PluginStateSource,
 }
 
-#[derive(Debug, Serialize, Clone, PartialEq, Eq)]
+#[derive(Debug, Serialize, Clone, PartialEq, Eq, JsonSchema)]
 pub(crate) enum PluginCurrentState {
     Disabled,
     Starting {
@@ -217,8 +228,7 @@ impl PluginState {
                 manifest_path.display()
             )
         })?;
-        Ok(serde_json::from_reader(reader)
-            .map_err(|x| format!("failed to parse manifest: {}", x))?)
+        serde_json::from_reader(reader).map_err(|x| format!("failed to parse manifest: {}", x))
     }
 
     fn get_frontend_dir_hash(manifest_path: &PathBuf) -> Option<String> {
@@ -238,6 +248,7 @@ impl PluginState {
         .ok()
     }
 
+    #[instrument(ret)]
     /// Returns the action to take. if [None] is returned this means that we are already in sync.
     fn get_reconcile_action(
         current_plugin_state: Option<&Self>,
@@ -253,18 +264,21 @@ impl PluginState {
                         frontend_hash: frontend_hash.clone(),
                     }),
                     // else we still need to get the system to know about it
-                    _ => None,
+                    _ => Some(ReconcileAction::Adopt {
+                        plugin_state: Box::new(desired_plugin_state.clone()),
+                        frontend_hash: "".to_string(),
+                    }),
                 };
             }
         };
 
-        let currently_running = match current_plugin_state.current_state {
+        let currently_running = !matches!(
+            current_plugin_state.current_state,
             PluginCurrentState::Disabled
-            | PluginCurrentState::Disabling {}
-            | PluginCurrentState::FailedToStart { .. }
-            | PluginCurrentState::Starting { .. } => false,
-            _ => true,
-        };
+                | PluginCurrentState::Disabling {}
+                | PluginCurrentState::FailedToStart { .. }
+                | PluginCurrentState::Starting { .. }
+        );
         let manifest_synced = current_plugin_state
             .manifest
             .eq(&desired_plugin_state.manifest);
@@ -305,7 +319,7 @@ impl PluginState {
                     Some(ReconcileAction::SyncInPlace {
                         plugin_id: current_plugin_state.id(),
                         patch: Box::new(move |x| {
-                            x.manifest = (&manifest).clone();
+                            x.manifest = manifest.clone();
                         }),
                     })
                 }
@@ -328,7 +342,7 @@ impl PluginState {
     }
 }
 
-#[derive(Debug, Serialize, Clone, PartialEq, Eq)]
+#[derive(Debug, Serialize, Clone, PartialEq, Eq, JsonSchema)]
 pub(crate) enum PluginStateSource {
     /// User-provided plugins are taken from the
     /// User-configured plugin directory.

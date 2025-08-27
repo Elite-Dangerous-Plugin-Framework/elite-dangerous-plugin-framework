@@ -1,17 +1,18 @@
 //! This module defines what a Plugin Manifest looks like
 
+use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 /// Each Plugin must have a `manifest.json` which describes the plugin, it's requirements, updating strategies, and so on.
-#[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Eq)]
-#[serde(tag = "manifest_version")]
+#[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Eq, JsonSchema)]
+#[serde(tag = "type")]
 pub(crate) enum PluginManifest {
-    #[serde(rename = "1alpha")]
+    #[serde(rename = "v1alpha")]
     V1Alpha(PluginManifestV1Alpha),
 }
 /// Version 1alpha is the initial version that may introduce breaking changes.
 /// Once the MVP is finished, this can be promoted to v1
-#[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Eq)]
+#[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Eq, JsonSchema)]
 pub(crate) struct PluginManifestV1Alpha {
     /// What is this plugin's name?
     /// This name shouldn't change over time as the internal ID and plugin-stored settings are tied to it
@@ -35,7 +36,7 @@ pub(crate) struct PluginManifestV1Alpha {
 }
 
 /// Note: Permissions will be added as we go to cover more and more use cases. If there's something you need exposed for your plugin that is currently impossible, please don't hesitate to open an Issue
-#[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Eq)]
+#[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Eq, JsonSchema)]
 pub(crate) enum PluginPermission {
     /// Allow reading anything within the Journal Directory
     /// Note that this is not needed for listening for the most recent journal, but can be useful if you need to look at historic files
@@ -56,7 +57,7 @@ impl PluginManifest {
     }
 }
 
-#[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Eq)]
+#[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Eq, JsonSchema)]
 pub(crate) struct PluginVersionOption {
     /// A semantic version (e.g. 1.2.3)
     pub(crate) version: String,
@@ -66,7 +67,7 @@ pub(crate) struct PluginVersionOption {
     pub(crate) download_url: String,
 }
 
-#[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Eq)]
+#[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Eq, JsonSchema)]
 pub(crate) enum PluginRemoteManifestResolutionStrategy {
     /// Assumes that each release also bundles a `manifest.json`.
     GitReleaseAsset,

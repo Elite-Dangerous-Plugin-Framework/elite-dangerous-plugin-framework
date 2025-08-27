@@ -1,12 +1,16 @@
 pub(crate) mod event_watchdog;
 pub(crate) mod plugins;
-use std::{env, sync::Arc};
+use std::{env, fs, sync::Arc};
 
-use plugins::PluginsState;
+use plugins::{
+    plugin_manifest::{PluginManifest, PluginManifestV1Alpha},
+    PluginState, PluginsState,
+};
+use serde_json::json;
 use tauri::{
     menu::{MenuBuilder, MenuItem, MenuItemBuilder, SubmenuBuilder},
     tray::TrayIconBuilder,
-    Manager,
+    AppHandle, Manager, Runtime, WebviewWindowBuilder,
 };
 use tokio::sync::RwLock;
 use tracing::Instrument;
@@ -19,7 +23,33 @@ fn greet(name: &str) -> String {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    tauri::Builder::default()
+    // This should be called as early in the execution of the app as possible
+    #[cfg(debug_assertions)] // only enable instrumentation in development builds
+    let devtools = tauri_plugin_devtools::init();
+
+    #[cfg(debug_assertions)]
+    {
+        // This is only run during debug
+        let manifest = schemars::schema_for!(PluginManifestV1Alpha);
+        let manifest_plugin_state = schemars::schema_for!(PluginState);
+        fs::write(
+            "../src/types/generated/pluginManifest.json",
+            serde_json::to_string_pretty(&manifest).unwrap(),
+        )
+        .unwrap();
+        fs::write(
+            "../src/types/generated/pluginState.json",
+            serde_json::to_string_pretty(&manifest_plugin_state).unwrap(),
+        )
+        .unwrap()
+    }
+
+    let mut builder = tauri::Builder::default();
+    #[cfg(debug_assertions)]
+    {
+        builder = builder.plugin(devtools);
+    };
+    builder
         .plugin(tauri_plugin_store::Builder::new().build())
         .plugin(tauri_plugin_single_instance::init(|app, _, _| {
             let _ = app
@@ -81,10 +111,31 @@ pub fn run() {
                 .menu(&menu)
                 .build(app)?;
 
+            app.on_menu_event(move |app, event| {
+                if event.id() == "settings" {
+                    if let Some(win) = app.get_webview_window("settings") {
+                        _ = win.set_focus()
+                    } else {
+                        let win = tauri::WebviewWindowBuilder::new(
+                            app,
+                            "settings",
+                            tauri::WebviewUrl::App("index.html#/settings".into()),
+                        )
+                        .build()
+                        .unwrap();
+                        _ = win.set_title("EDPF Settings");
+                        _ = win.set_focus()
+                    }
+                }
+            });
+
             Ok(())
         })
         .plugin(tauri_plugin_opener::init())
-        .invoke_handler(tauri::generate_handler![greet])
+        .invoke_handler(tauri::generate_handler![
+            greet,
+            plugins::commands::fetch_all_plugins
+        ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
