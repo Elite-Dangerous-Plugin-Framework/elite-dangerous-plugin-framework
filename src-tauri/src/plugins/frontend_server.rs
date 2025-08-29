@@ -5,7 +5,7 @@ use std::{
     sync::Arc,
 };
 
-use super::PluginsState;
+use super::{PluginState, PluginsState};
 use anyhow::anyhow;
 use axum::{
     body::Body,
@@ -24,6 +24,18 @@ use tracing::{error, info};
 #[derive(Debug, Deserialize, Serialize, Clone)]
 pub(crate) struct HttpServerState {
     address: SocketAddr,
+}
+
+impl HttpServerState {
+    pub(crate) fn make_import_base(&self, plugin: &PluginState) -> String {
+        let port = self.address.port();
+        format!(
+            "http://localhost:{}/{}/{}",
+            port,
+            plugin.manifest.id(),
+            plugin.frontend_hash
+        )
+    }
 }
 
 type InjectableState = Arc<RwLock<PluginsState>>;

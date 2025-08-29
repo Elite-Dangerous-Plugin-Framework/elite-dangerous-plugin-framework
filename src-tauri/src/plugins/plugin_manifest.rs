@@ -24,9 +24,6 @@ pub(crate) struct PluginManifestV1Alpha {
     pub(crate) repository_url: Option<String>,
     /// optionally, a link where the user can get support. Can be a Discord Link, Github Issues, etc.
     pub(crate) support_url: Option<String>,
-    /// each plugin has a default set of permissions like getting the current full journal, getting the Status.json, Backpack.json, etc. + anything a browser could do
-    /// some plugins might need additional permissions, e.g. File Read Access / Write Access
-    pub(crate) permissions: Option<Vec<PluginPermission>>,
     /// Put a semantic version here (e.g. `0.0.1`)
     pub(crate) version: Option<String>,
     /// A list of versions. This is ignored from the local file and only the remote manifest is considered. Look at [PluginManifest::remote_manifest]
@@ -35,13 +32,6 @@ pub(crate) struct PluginManifestV1Alpha {
     pub(crate) remote_manifest: Option<PluginRemoteManifestResolutionStrategy>,
 }
 
-/// Note: Permissions will be added as we go to cover more and more use cases. If there's something you need exposed for your plugin that is currently impossible, please don't hesitate to open an Issue
-#[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Eq, JsonSchema)]
-pub(crate) enum PluginPermission {
-    /// Allow reading anything within the Journal Directory
-    /// Note that this is not needed for listening for the most recent journal, but can be useful if you need to look at historic files
-    JournalDirReadAnyJournals,
-}
 
 impl PluginManifest {
     pub(crate) fn id(&self) -> String {

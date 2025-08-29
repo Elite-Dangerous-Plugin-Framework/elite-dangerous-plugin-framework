@@ -112,14 +112,15 @@ impl PluginsState {
             let frontend_hash = PluginState::get_frontend_dir_hash(&path);
             let desired_state = PluginState {
                 current_state: match active_plugin_ids_set.contains(&manifest.id()) {
-                    true => match frontend_hash {
-                        Some(frontend_hash) => PluginCurrentState::Running { frontend_hash },
+                    true => match &frontend_hash {
+                        Some(_frontend_hash) => PluginCurrentState::Running {},
                         None => PluginCurrentState::FailedToStart {
                             reasons: vec!["Failed to calculate hash for assets".into()],
                         },
                     },
-                    false => PluginCurrentState::Disabled,
+                    false => PluginCurrentState::Disabled {},
                 },
+                frontend_hash: frontend_hash.unwrap_or("missing".into()),
                 plugin_dir: path.parent().unwrap().to_path_buf(),
                 manifest,
                 source: PluginStateSource::UserProvided,
@@ -187,21 +188,15 @@ pub(crate) struct PluginState {
     plugin_dir: PathBuf,
     manifest: PluginManifest,
     source: PluginStateSource,
+    frontend_hash: String,
 }
 
 #[derive(Debug, Serialize, Clone, PartialEq, Eq, JsonSchema)]
 pub(crate) enum PluginCurrentState {
-    Disabled,
-    Starting {
-        metadata: Vec<String>,
-        frontend_hash: String,
-    },
-    FailedToStart {
-        reasons: Vec<String>,
-    },
-    Running {
-        frontend_hash: String,
-    },
+    Disabled {},
+    Starting { metadata: Vec<String> },
+    FailedToStart { reasons: Vec<String> },
+    Running {},
     Disabling {},
 }
 
@@ -259,14 +254,12 @@ impl PluginState {
             None => {
                 return match &desired_plugin_state.current_state {
                     // Plugin is not known yet. If we want it running, we have to spawn an adopt action.
-                    PluginCurrentState::Running { frontend_hash } => Some(ReconcileAction::Adopt {
+                    PluginCurrentState::Running { .. } => Some(ReconcileAction::Adopt {
                         plugin_state: Box::new(desired_plugin_state.clone()),
-                        frontend_hash: frontend_hash.clone(),
                     }),
                     // else we still need to get the system to know about it
                     _ => Some(ReconcileAction::Adopt {
                         plugin_state: Box::new(desired_plugin_state.clone()),
-                        frontend_hash: "".to_string(),
                     }),
                 };
             }
@@ -274,7 +267,7 @@ impl PluginState {
 
         let currently_running = !matches!(
             current_plugin_state.current_state,
-            PluginCurrentState::Disabled
+            PluginCurrentState::Disabled {}
                 | PluginCurrentState::Disabling {}
                 | PluginCurrentState::FailedToStart { .. }
                 | PluginCurrentState::Starting { .. }
@@ -283,19 +276,11 @@ impl PluginState {
             .manifest
             .eq(&desired_plugin_state.manifest);
         // only relevant if both desired and current state is in running
-        let frontend_dirs_synced = match (
-            &current_plugin_state.current_state,
-            &desired_plugin_state.current_state,
-        ) {
-            (
-                PluginCurrentState::Running { frontend_hash: a },
-                PluginCurrentState::Running { frontend_hash: b },
-            ) => Some(a == b),
-            _ => None,
-        };
+        let frontend_dirs_synced =
+            current_plugin_state.frontend_hash == desired_plugin_state.frontend_hash;
 
         match (currently_running, &desired_plugin_state.current_state) {
-            (true, PluginCurrentState::Disabled) => {
+            (true, PluginCurrentState::Disabled {}) => {
                 // We are currently running, but shouldn't be. Stop
                 Some(ReconcileAction::Stop {
                     plugin_id: current_plugin_state.id(),
@@ -307,9 +292,9 @@ impl PluginState {
                 None
             }
             (true, PluginCurrentState::FailedToStart { reasons }) => todo!(),
-            (true, PluginCurrentState::Running { frontend_hash }) => todo!(),
+            (true, PluginCurrentState::Running {}) => todo!(),
             (true, PluginCurrentState::Disabling {}) => todo!(),
-            (false, PluginCurrentState::Disabled) => {
+            (false, PluginCurrentState::Disabled {}) => {
                 // Not running and we dont want it to run -> keep disabled
                 // We can update the manifest if its out of sync though
                 if manifest_synced {
@@ -324,15 +309,9 @@ impl PluginState {
                     })
                 }
             }
-            (
-                false,
-                PluginCurrentState::Starting {
-                    metadata,
-                    frontend_hash,
-                },
-            ) => todo!(),
+            (false, PluginCurrentState::Starting { metadata }) => todo!(),
             (false, PluginCurrentState::FailedToStart { reasons }) => todo!(),
-            (false, PluginCurrentState::Running { frontend_hash }) => todo!(),
+            (false, PluginCurrentState::Running {}) => todo!(),
             (false, PluginCurrentState::Disabling {}) => todo!(),
         }
     }

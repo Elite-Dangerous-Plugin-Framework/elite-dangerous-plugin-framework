@@ -1,8 +1,10 @@
 import { invoke } from "@tauri-apps/api/core";
 import { useEffect, useState } from "react";
-import { PluginManifestV1Alpha } from "../types/generated/pluiginManifes";
-import { PluginState } from "../types/generated/pluginState";
-import z from "zod";
+
+import { SettingsMainNoneSelected } from "./SettingsCore";
+import { getBorderColourForstate } from "./utils";
+import { PluginState } from "../types/PluginState";
+import { SettingsPluginPane } from "./SettingsPluginPane";
 
 async function getAllPluginStates() {
   return (await invoke("fetch_all_plugins")) as Record<string, PluginState>;
@@ -27,87 +29,130 @@ export default function Settings() {
   }, []);
 
   return (
-    <main className="min-h-[100vh] bg-slate-900 flex flex-row text-white">
+    <main className="min-h-[100vh] bg-neutral-900 flex flex-row text-white select-none">
       <section
         id="plugin_select"
-        className="w-[200px] bg-neutral-800 overflow-y-scroll"
+        className="w-[200px] bg-neutral-800 fixed min-h-[100vh]"
       >
-        <h1 className="p-2">Your Plugins</h1>
+        <h1
+          className="p-2 cursor-pointer hover:bg-white/10"
+          onClick={() => setActiveId(undefined)}
+        >
+          Your Plugins
+        </h1>
         {(pluginStates ?? []).length === 0 ? (
           <p>No plugins loaded</p>
         ) : (
           pluginStates!.map((e) => (
             <SettingsSidebarPlugin
               onPluginSelected={(id) => {
-                console.log(id);
+                setActiveId(id);
               }}
               key={e.id}
               plugin={e}
-              selected
+              selected={activeId == e.id}
             />
           ))
         )}
       </section>
-      <section id="settings"></section>
+      <section id="settings" className="flex-1 pl-[200px] inline-flex flex-col">
+        {activeId === undefined ? (
+          <SettingsMainNoneSelected
+            pluginStateCount={countPluginStates(pluginStates ?? [])}
+          />
+        ) : (
+          <SettingsMain
+            plugin={(pluginStates ?? []).find((e) => e.id === activeId)}
+          />
+        )}
+      </section>
     </main>
   );
+}
+
+function SettingsMain({
+  plugin,
+}: {
+  plugin: (PluginState & { id: string }) | undefined;
+}) {
+  if (!plugin) {
+    return (
+      <div>
+        <span className=" text-lg">Whoops…</span> The plugin you're trying to
+        access couldn't be found by ID. This is probably a bug.
+      </div>
+    );
+  }
+
+  return <SettingsPluginPane plugin={plugin} />;
 }
 
 function SettingsSidebarPlugin({
   plugin,
   selected,
+  onPluginSelected,
 }: {
   plugin: PluginState & { id: string };
   onPluginSelected: (id: string) => void;
   selected: boolean;
 }) {
   let name = plugin.id;
-  let description: string | undefined = undefined;
   if (plugin.manifest.type === "v1alpha") {
-    const manifest = plugin.manifest as any as PluginManifestV1Alpha;
-    name = manifest.name;
-    if (typeof manifest.description === "string") {
-      description = manifest.description;
-    }
+    name = plugin.manifest.name;
   }
 
   // Reduce the stateful enums down to stateless enums
   const currentState = inferCurrentState(plugin.current_state);
 
-  const colourMapping: Record<typeof currentState, string> = {
-    Disabled: "border-gray-500",
-    Starting: "border-lime-300",
-    FailedToStart: "border-red-500",
-    Running: "border-green-400",
-    Disabling: "border-amber-400",
-  };
-
   return (
     <button
-      className={`inline-flex border-l-8 flex-row w-full p-2 text-xs cursor-pointer hover:bg-white/10 ${
-        colourMapping[currentState]
-      } ${selected ? "bg-white/40" : ""}`}
+      onClick={() => onPluginSelected(plugin.id)}
+      className={`inline-flex border-l-8 flex-row w-full p-2 text-xs cursor-pointer hover:bg-white/10 ${getBorderColourForstate(
+        currentState
+      )} ${selected ? "bg-white/40" : ""}`}
     >
       <p className=" inline-flex justify-baseline items-center gap-1">{name}</p>
     </button>
   );
 }
 
-function inferCurrentState(current: PluginState["current_state"]) {
-  if (current == "Disabled") {
-    return "Disabled" as const;
+export type PluginStatesSimple =
+  | "Disabled"
+  | "Starting"
+  | "FailedToStart"
+  | "Running"
+  | "Disabling";
+
+function countPluginStates(
+  plugins: PluginState[]
+): Record<PluginStatesSimple, number> {
+  const response = {
+    Disabled: 0,
+    Starting: 0,
+    FailedToStart: 0,
+    Running: 0,
+    Disabling: 0,
+  };
+
+  for (const plugin of plugins) {
+    response[inferCurrentState(plugin.current_state)]++;
   }
-  if ((current as any).Starting) {
-    return "Starting" as const;
-  }
-  if ((current as any).FailedToStart) {
-    return "FailedToStart" as const;
-  }
-  if ((current as any).Running) {
-    return "Running" as const;
-  }
-  if ((current as any).Disabling) {
-    return "Disabling" as const;
+  return response;
+}
+
+function inferCurrentState(
+  current: PluginState["current_state"]
+): PluginStatesSimple {
+  for (const item of [
+    "Disabled",
+    "Starting",
+    "FailedToStart",
+    "Running",
+    "Disabling",
+  ] as const) {
+    if (item in current) {
+      return item;
+    }
   }
   throw new Error("state could not be mapped");
 }

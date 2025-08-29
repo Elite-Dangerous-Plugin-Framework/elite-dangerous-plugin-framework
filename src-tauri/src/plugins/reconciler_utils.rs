@@ -15,17 +15,11 @@ pub(super) enum ReconcileAction {
     ///
     /// **NOTE**: [ReconcileAction::Adopt] is also used for disabled plugins. The reconciler logic has some special handling here, looking at the [PluginState::current_state] field.
     /// if this field is [PluginCurrentState::Disabled], it wont bother to go through the startup procedure, and acts more as a "spawning" [ReconcileAction::SyncInPlace]
-    Adopt {
-        plugin_state: Box<PluginState>,
-        frontend_hash: String,
-    },
+    Adopt { plugin_state: Box<PluginState> },
     /// The plugin is inactive and should be started up.  
     /// This means the HTTP Server will open up the route
     /// and the frontend is notified about the plugin and will fetch the Web Component, inject it, and so on
-    Start {
-        frontend_hash: String,
-        plugin_id: String,
-    },
+    Start { plugin_id: String },
     /// This plugin is currently running.  
     /// The HTTP server is told to remove the plugin from its routing. The Web Component is notified about its imminent shutdown.
     /// After that, it is removed from the UI
@@ -41,7 +35,6 @@ pub(super) enum ReconcileAction {
         plugin_id: String,
         #[serde(skip)]
         patch: Box<dyn FnMut(&mut PluginState)>,
-        frontend_hash: String,
     },
     /// This is an in-place update of the Plugin State, excluding anything else.
     /// This is used if we have a deactivated plugin that had it's manifest updated.
@@ -56,20 +49,12 @@ pub(super) enum ReconcileAction {
 impl fmt::Debug for ReconcileAction {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::Adopt {
-                plugin_state,
-                frontend_hash,
-            } => f
+            Self::Adopt { plugin_state } => f
                 .debug_struct("Adopt")
                 .field("plugin_state", plugin_state)
-                .field("frontend_hash", frontend_hash)
                 .finish(),
-            Self::Start {
-                frontend_hash,
-                plugin_id,
-            } => f
+            Self::Start { plugin_id } => f
                 .debug_struct("Start")
-                .field("frontend_hash", frontend_hash)
                 .field("plugin_id", plugin_id)
                 .finish(),
             Self::Stop { plugin_id } => f
@@ -83,11 +68,9 @@ impl fmt::Debug for ReconcileAction {
             Self::Restart {
                 plugin_id,
                 patch: _,
-                frontend_hash,
             } => f
                 .debug_struct("Restart")
                 .field("plugin_id", plugin_id)
-                .field("frontend_hash", frontend_hash)
                 .finish(),
             Self::SyncInPlace {
                 plugin_id,
@@ -110,25 +93,15 @@ impl ReconcileAction {
         app_handle: &AppHandle<Wry>,
     ) -> anyhow::Result<()> {
         match self {
-            ReconcileAction::Adopt {
-                plugin_state,
-                frontend_hash,
-            } => {
+            ReconcileAction::Adopt { plugin_state } => {
                 let id = plugin_state.id();
                 plugins_states
                     .plugin_states
                     .insert(id.clone(), *plugin_state);
                 // The rest is just essentially a Start action
-                ReconcileAction::Start {
-                    frontend_hash,
-                    plugin_id: id,
-                }
-                .apply(plugins_states, app_handle)
+                ReconcileAction::Start { plugin_id: id }.apply(plugins_states, app_handle)
             }
-            ReconcileAction::Start {
-                frontend_hash,
-                plugin_id,
-            } => {
+            ReconcileAction::Start { plugin_id } => {
                 let state = match plugins_states.plugin_states.get_mut(&plugin_id) {
                     None => {
                         return Err(anyhow!("Received reconcile to start Plugin {}, but is missing in the plugins state", &plugin_id))
@@ -136,10 +109,7 @@ impl ReconcileAction {
                     Some(x) => {x},
                 };
 
-                state.current_state = PluginCurrentState::Starting {
-                    metadata: vec![],
-                    frontend_hash: frontend_hash.clone(),
-                };
+                state.current_state = PluginCurrentState::Starting { metadata: vec![] };
 
                 /*
                 The Frontend side listens for this event and will start the plugin
@@ -157,7 +127,6 @@ impl ReconcileAction {
                     "core.plugin.started",
                     json!({
                         "plugin_id": plugin_id.clone(),
-                        "frontend_hash": frontend_hash.clone(),
                     }),
                 );
                 Ok(())
@@ -204,11 +173,7 @@ impl ReconcileAction {
                 plugins_states.plugin_states.remove(&plugin_id);
                 Ok(())
             }
-            ReconcileAction::Restart {
-                plugin_id,
-                patch,
-                frontend_hash,
-            } => {
+            ReconcileAction::Restart { plugin_id, patch } => {
                 ReconcileAction::SyncInPlace {
                     plugin_id: plugin_id.clone(),
                     patch,
@@ -226,11 +191,10 @@ impl ReconcileAction {
                 };
 
                 match state.current_state {
-                    PluginCurrentState::Disabling {} | PluginCurrentState::Disabled => {
+                    PluginCurrentState::Disabling {} | PluginCurrentState::Disabled {} => {
                         // We are already "on the way down" or already down.
                         // Just start it up against
                         ReconcileAction::Start {
-                            frontend_hash: frontend_hash.clone(),
                             plugin_id: plugin_id.clone(),
                         }
                         .apply(plugins_states, app_handle)
@@ -243,7 +207,6 @@ impl ReconcileAction {
                             "core.plugin.restart",
                             json!({
                                     "plugin_id": plugin_id.clone(),
-                                    "frontend_hash": frontend_hash.clone()
                             }),
                         );
                         Ok(())

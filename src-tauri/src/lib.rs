@@ -27,23 +27,6 @@ pub fn run() {
     #[cfg(debug_assertions)] // only enable instrumentation in development builds
     let devtools = tauri_plugin_devtools::init();
 
-    #[cfg(debug_assertions)]
-    {
-        // This is only run during debug
-        let manifest = schemars::schema_for!(PluginManifestV1Alpha);
-        let manifest_plugin_state = schemars::schema_for!(PluginState);
-        fs::write(
-            "../src/types/generated/pluginManifest.json",
-            serde_json::to_string_pretty(&manifest).unwrap(),
-        )
-        .unwrap();
-        fs::write(
-            "../src/types/generated/pluginState.json",
-            serde_json::to_string_pretty(&manifest_plugin_state).unwrap(),
-        )
-        .unwrap()
-    }
-
     let mut builder = tauri::Builder::default();
     #[cfg(debug_assertions)]
     {
@@ -134,7 +117,8 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .invoke_handler(tauri::generate_handler![
             greet,
-            plugins::commands::fetch_all_plugins
+            plugins::commands::fetch_all_plugins,
+            plugins::commands::get_import_path_for_plugin,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
