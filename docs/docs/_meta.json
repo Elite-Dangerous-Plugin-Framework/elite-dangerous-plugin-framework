@@ -8,5 +8,10 @@
     "text": "Developing Plugins",
     "link": "/guide-dev/",
     "activeMatch": "/guide-dev/"
+  },
+  {
+    "text": "Internal Docs",
+    "link": "/internal/",
+    "activeMatch": "/internal/"
   }
 ]

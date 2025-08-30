@@ -8,6 +8,12 @@
   "permissions": [
     "core:default",
     "opener:default",
-    "store:default"
+    "store:default",
+    "core:window:default",
+    "core:window:allow-start-dragging",
+    "core:window:allow-maximize",
+    "core:window:allow-close",
+    "core:window:allow-is-maximized",
+    "core:window:allow-minimize"
   ]
 }

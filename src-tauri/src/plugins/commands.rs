@@ -29,8 +29,28 @@ pub(crate) async fn get_import_path_for_plugin<R: Runtime>(
     if let Some(x) = data.plugin_states.get(&plugin_id) {
         let http_state = app.state::<HttpServerState>();
         let import = http_state.make_import_base(x);
-        Ok(json!({"success": true, "import": format!("{import}/index.js"), "hash": x.frontend_hash.clone()}))
+        Ok(
+            json!({"success": true, "import": format!("{import}/index.js"), "hash": x.frontend_hash.clone()}),
+        )
     } else {
         Ok(json!({"success": false, "reason": "PLUGIN_NOT_FOUND"}))
     }
+}
+
+#[tauri::command]
+pub(crate) async fn open_settings<R: Runtime>(app: tauri::AppHandle<R>) -> Result<(), String> {
+    if let Some(win) = app.get_webview_window("settings") {
+        _ = win.set_focus()
+    } else {
+        let win = tauri::WebviewWindowBuilder::new(
+            &app,
+            "settings",
+            tauri::WebviewUrl::App("index.html#/settings".into()),
+        )
+        .build()
+        .unwrap();
+        _ = win.set_title("EDPF Settings");
+        _ = win.set_focus()
+    }
+    Ok(())
 }
