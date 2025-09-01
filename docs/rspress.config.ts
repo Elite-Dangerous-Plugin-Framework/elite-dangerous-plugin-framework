@@ -14,10 +14,10 @@ export default defineConfig({
   base: "/elite-dangerous-plugin-framework/",
   root: path.join(__dirname, "docs"),
   title: "Elite: Dangerous Plugin Framework",
-  icon: "/rspress-icon.png",
+  icon: "/edpf.svg",
   logo: {
-    light: "/rspress-light-logo.png",
-    dark: "/rspress-dark-logo.png",
+    light: "/edpf.svg",
+    dark: "/edpf.svg",
   },
   themeConfig: {
     socialLinks: [
@@ -28,4 +28,5 @@ export default defineConfig({
       },
     ],
   },
+  globalStyles: path.join(__dirname, "styles/index.css")
 });

@@ -92,14 +92,18 @@ impl ReconcileAction {
         plugins_states: &mut PluginsState,
         app_handle: &AppHandle<Wry>,
     ) -> anyhow::Result<()> {
-        match self {
+        let targeted_id = match self {
             ReconcileAction::Adopt { plugin_state } => {
-                let id = plugin_state.id();
+                let plugin_id = plugin_state.id();
                 plugins_states
                     .plugin_states
-                    .insert(id.clone(), *plugin_state);
+                    .insert(plugin_id.clone(), *plugin_state);
                 // The rest is just essentially a Start action
-                ReconcileAction::Start { plugin_id: id }.apply(plugins_states, app_handle)
+                ReconcileAction::Start {
+                    plugin_id: plugin_id.clone(),
+                }
+                .apply(plugins_states, app_handle)?;
+                plugin_id
             }
             ReconcileAction::Start { plugin_id } => {
                 let state = match plugins_states.plugin_states.get_mut(&plugin_id) {
@@ -123,13 +127,7 @@ impl ReconcileAction {
                 - attached the instance to the DOM
                 it will push a completion command. The backend will set the state to Running
                  */
-                _ = app_handle.emit(
-                    "core.plugin.started",
-                    json!({
-                        "plugin_id": plugin_id.clone(),
-                    }),
-                );
-                Ok(())
+                plugin_id
             }
             ReconcileAction::Stop { plugin_id } => {
                 let state = match plugins_states.plugin_states.get_mut(&plugin_id) {
@@ -153,13 +151,7 @@ impl ReconcileAction {
 
                 it will push a completion command. The backend will set the state to Disabled
                  */
-                _ = app_handle.emit(
-                    "core.plugin.disabling",
-                    json!({
-                        "plugin_id": plugin_id.clone(),
-                    }),
-                );
-                todo!()
+                plugin_id
             }
             ReconcileAction::Drop { plugin_id } => {
                 let plugin_id = plugin_id.clone();
@@ -171,7 +163,7 @@ impl ReconcileAction {
                 );
                 // We get rid of our state about this plugin
                 plugins_states.plugin_states.remove(&plugin_id);
-                Ok(())
+                plugin_id
             }
             ReconcileAction::Restart { plugin_id, patch } => {
                 ReconcileAction::SyncInPlace {
@@ -197,21 +189,16 @@ impl ReconcileAction {
                         ReconcileAction::Start {
                             plugin_id: plugin_id.clone(),
                         }
-                        .apply(plugins_states, app_handle)
+                        .apply(plugins_states, app_handle);
                     }
                     PluginCurrentState::Starting { .. }
                     | PluginCurrentState::FailedToStart { .. }
                     | PluginCurrentState::Running { .. } => {
                         // Tell the frontend to do a restart
-                        _ = app_handle.emit(
-                            "core.plugin.restart",
-                            json!({
-                                    "plugin_id": plugin_id.clone(),
-                            }),
-                        );
-                        Ok(())
+                        todo!()
                     }
                 }
+                plugin_id
             }
             ReconcileAction::SyncInPlace {
                 plugin_id,
@@ -227,8 +214,19 @@ impl ReconcileAction {
                     Some(x) => x,
                 };
                 patch(state);
-                Ok(())
+                plugin_id
             }
+        };
+
+        if let Some(plugin_state) = plugins_states.get_cloned(&targeted_id) {
+            _ = app_handle.emit(
+                "core/plugins/update",
+                json!({
+                    "id": targeted_id,
+                    "pluginState": plugin_state
+                }),
+            );
         }
+        Ok(())
     }
 }

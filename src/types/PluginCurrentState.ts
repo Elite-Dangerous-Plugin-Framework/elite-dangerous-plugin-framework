@@ -9,7 +9,6 @@ export type PluginCurrentStateDisabled = z.infer<
 export const PluginCurrentStateStartingZod = z.object({
   Starting: z.object({
     metadata: z.array(z.string()),
-    frontend_hash: z.string(),
   }),
 });
 export type PluginCurrentStateStarting = z.infer<
@@ -30,10 +29,9 @@ export type PluginCurrentStateDisabling = z.infer<
   typeof PluginCurrentStateDisablingZod
 >;
 
-export const PluginCurrentStateZod = PluginCurrentStateDisabledZod.or(
-  PluginCurrentStateStartingZod
-)
-  .or(PluginCurrentStateFailedToStartZod)
-  .or(PluginCurrentStateDisablingZod);
+export const PluginCurrentStateZod = z.union([
+  PluginCurrentStateStartingZod,
+  PluginCurrentStateDisabledZod, PluginCurrentStateFailedToStartZod, PluginCurrentStateDisablingZod,
+]);
 
 export type PluginCurrentState = z.infer<typeof PluginCurrentStateZod>;

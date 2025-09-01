@@ -16,6 +16,6 @@ hero:
       text: GitHub
       link: https://github.com/CMDR-WDX/elite-dangerous-plugin-framework
   image:
-    src: /rspress-icon.png
+    src: /edpf.svg
     alt: Logo
 ---

@@ -5,6 +5,7 @@ import { ManifestZod } from "./PluginManifest";
 export const PluginStateZod = z.object({
   current_state: PluginCurrentStateZod,
   plugin_dir: z.string(),
+  frontend_hash: z.string(),
   manifest: ManifestZod,
   source: z.enum(["UserProvided", "Embedded"]),
 });

@@ -1,19 +1,34 @@
-import { invoke } from "@tauri-apps/api/core";
 import { useEffect, useState } from "react";
 
 import { SettingsMainNoneSelected } from "./SettingsCore";
 import { getBorderColourForstate } from "./utils";
 import { PluginState } from "../types/PluginState";
 import { SettingsPluginPane } from "./SettingsPluginPane";
+import { listen } from "@tauri-apps/api/event";
+import { getAllPluginStates } from "../commands/getAllPluginStates";
 
-async function getAllPluginStates() {
-  return (await invoke("fetch_all_plugins")) as Record<string, PluginState>;
-}
+
 
 export default function Settings() {
   const [pluginStates, setPluginStates] =
     useState<(PluginState & { id: string })[]>();
   const [activeId, setActiveId] = useState<string>();
+
+  useEffect(() => {
+    const updateUnlisten = listen("core/plugins/update", (ev) => {
+      (async () => {
+        const result = Object.entries(await getAllPluginStates())
+          .map(([id, v]) => ({ ...v, id }))
+          .sort((a, b) => a.id.localeCompare(b.id));
+        setPluginStates(result);
+      })()
+    })
+
+    return () => {
+      updateUnlisten.then(e => e())
+    }
+  }, [])
+
 
   useEffect(() => {
     (async () => {

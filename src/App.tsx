@@ -8,15 +8,46 @@ import {
 } from "./icons/navbar";
 import { getCurrentWindow, Window } from "@tauri-apps/api/window";
 import { invoke } from "@tauri-apps/api/core";
+import { PluginState } from "./types/PluginState";
+import { getAllPluginStates } from "./commands/getAllPluginStates";
+import z from "zod";
+
+const LoadedPluginStateLookup = z.record(z.string(),
+  z.object({
+    ref: z.instanceof(HTMLElement).optional(),
+    customElementName: z.string()
+  })
+)
+
 
 function App() {
   const [appWin, setAppWin] = useState<Window>();
   const [isMaximized, setIsMaximized] = useState(false);
+  const [[pluginStates, updateID], setPluginStates] = useState<[Record<string, PluginState>, string | undefined]>([{}, undefined]);
+
+
   useEffect(() => {
     const win = getCurrentWindow();
     setAppWin(win);
     win.isMaximized().then((e) => setIsMaximized(e));
+    getAllPluginStates().then(e => setPluginStates([e, undefined]))
   }, []);
+
+  useEffect(() => {
+    for (const item of Object.entries(pluginStates).filter(e => updateID === undefined || updateID === e[0])) {
+      const [pluginID, pluginState] = item;
+      if ("Starting" in pluginState.current_state) {
+        // Do reconciliation for Starting
+      }
+      if ("Disabling" in pluginState.current_state) {
+        // Do reconciliation for Disabling
+
+      }
+
+
+    }
+  }, [pluginStates, updateID])
+
 
   return (
     <main className="bg-slate-950 min-h-[100vh] text-white flex flex-col group">

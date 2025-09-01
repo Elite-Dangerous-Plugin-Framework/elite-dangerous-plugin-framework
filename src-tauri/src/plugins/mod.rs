@@ -22,8 +22,9 @@ use tracing::{debug, error, info, instrument};
 pub(crate) mod commands;
 pub(crate) mod frontend_server;
 pub(crate) mod plugin_manifest;
+pub(crate) mod plugin_settings;
 mod reconciler_utils;
-
+//
 pub(super) async fn spawn_reconciler_blocking(app_state: &AppHandle<Wry>) -> ! {
     loop {
         {
@@ -48,6 +49,10 @@ impl PluginsState {
         Self {
             plugin_states: HashMap::new(),
         }
+    }
+
+    pub(crate) fn get_cloned(&self, id: &str) -> Option<PluginState> {
+        self.plugin_states.get(id).cloned()
     }
 
     /// Runs a reconciliation against all plugins.  

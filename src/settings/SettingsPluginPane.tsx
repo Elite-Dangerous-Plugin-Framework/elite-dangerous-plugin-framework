@@ -31,21 +31,21 @@ function getDisplayVersion(plugin: PluginState) {
 type SettingsComponentLoadState =
   | { type: "Loading" }
   | {
-      type: "PluginNotFound";
-    }
+    type: "PluginNotFound";
+  }
   | {
-      type: "FailedAwaitImport";
-    }
+    type: "FailedAwaitImport";
+  }
   | {
-      type: "NoSettingsExported";
-    }
+    type: "NoSettingsExported";
+  }
   | {
-      type: "SettingsExportNotHTMLElement";
-    }
+    type: "SettingsExportNotHTMLElement";
+  }
   | {
-      type: "Registered";
-      registeredAs: string;
-    };
+    type: "Registered";
+    registeredAs: string;
+  };
 
 export function SettingsPluginPane({ plugin }: SettingsPluginPaneProps) {
   const pluginVersion = getDisplayVersion(plugin);
@@ -105,9 +105,8 @@ export function SettingsPluginPane({ plugin }: SettingsPluginPaneProps) {
         return;
       }
 
-      let customElementID = `${plugin.id}-${
-        result.success ? result.hash : "no-hash"
-      }`;
+      let customElementID = `settings-${plugin.id}-${result.success ? result.hash : "no-hash"
+        }`;
       if (!customElements.get(customElementID)) {
         customElements.define(customElementID, module.Settings);
       }
