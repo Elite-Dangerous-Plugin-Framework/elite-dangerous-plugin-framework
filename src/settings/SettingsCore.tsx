@@ -1,10 +1,10 @@
-import { PluginStatesSimple } from "./Settings";
-import { getBorderColourForstate } from "./utils";
+import { PluginCurrentStateKeys } from "../types/PluginCurrentState";
+import { PluginStateUIData } from "./utils";
 
 export function SettingsMainNoneSelected({
   pluginStateCount,
 }: {
-  pluginStateCount: Record<PluginStatesSimple, number>;
+  pluginStateCount: Record<PluginCurrentStateKeys, number>;
 }) {
   return (
     <div className="p-2 overflow-y-scroll">
@@ -21,7 +21,7 @@ export function SettingsMainNoneSelected({
 function SettingsStateVisualizer({
   pluginStateCount,
 }: {
-  pluginStateCount: Record<PluginStatesSimple, number>;
+  pluginStateCount: Record<PluginCurrentStateKeys, number>;
 }) {
   return (
     <div className="flex flex-row mt-2">
@@ -32,14 +32,17 @@ function SettingsStateVisualizer({
           "FailedToStart",
           "Running",
           "Disabling",
-        ] as PluginStatesSimple[]
+        ] as PluginCurrentStateKeys[]
       )
         .filter((e) => pluginStateCount[e] > 0)
         .map((e) => (
           <div
+            style={{
+              borderColor: PluginStateUIData[e].colour,
+              color: PluginStateUIData[e].colour,
+            }}
             className={
-              "p-1 text-xs inline-flex flex-row gap-1 justify-baseline border-1 rounded-lg " +
-              getBorderColourForstate(e)
+              "p-1 text-xs inline-flex flex-row gap-1 justify-baseline border-1 rounded-lg "
             }
             key={e}
           >

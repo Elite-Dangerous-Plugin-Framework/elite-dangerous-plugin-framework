@@ -31,9 +31,7 @@ impl HttpServerState {
         let port = self.address.port();
         format!(
             "http://localhost:{}/{}/{}",
-            port,
-            plugin.manifest.id(),
-            plugin.frontend_hash
+            port, plugin.id, plugin.frontend_hash
         )
     }
 }

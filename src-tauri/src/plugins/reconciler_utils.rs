@@ -15,7 +15,10 @@ pub(super) enum ReconcileAction {
     ///
     /// **NOTE**: [ReconcileAction::Adopt] is also used for disabled plugins. The reconciler logic has some special handling here, looking at the [PluginState::current_state] field.
     /// if this field is [PluginCurrentState::Disabled], it wont bother to go through the startup procedure, and acts more as a "spawning" [ReconcileAction::SyncInPlace]
-    Adopt { plugin_state: Box<PluginState> },
+    Adopt {
+        plugin_state: Box<PluginState>,
+        start: bool,
+    },
     /// The plugin is inactive and should be started up.  
     /// This means the HTTP Server will open up the route
     /// and the frontend is notified about the plugin and will fetch the Web Component, inject it, and so on
@@ -49,9 +52,13 @@ pub(super) enum ReconcileAction {
 impl fmt::Debug for ReconcileAction {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::Adopt { plugin_state } => f
+            Self::Adopt {
+                plugin_state,
+                start,
+            } => f
                 .debug_struct("Adopt")
                 .field("plugin_state", plugin_state)
+                .field("start", start)
                 .finish(),
             Self::Start { plugin_id } => f
                 .debug_struct("Start")
@@ -93,16 +100,21 @@ impl ReconcileAction {
         app_handle: &AppHandle<Wry>,
     ) -> anyhow::Result<()> {
         let targeted_id = match self {
-            ReconcileAction::Adopt { plugin_state } => {
-                let plugin_id = plugin_state.id();
+            ReconcileAction::Adopt {
+                plugin_state,
+                start,
+            } => {
+                let plugin_id = plugin_state.id.clone();
                 plugins_states
                     .plugin_states
                     .insert(plugin_id.clone(), *plugin_state);
                 // The rest is just essentially a Start action
-                ReconcileAction::Start {
-                    plugin_id: plugin_id.clone(),
+                if start {
+                    ReconcileAction::Start {
+                        plugin_id: plugin_id.clone(),
+                    }
+                    .apply(plugins_states, app_handle)?;
                 }
-                .apply(plugins_states, app_handle)?;
                 plugin_id
             }
             ReconcileAction::Start { plugin_id } => {
@@ -155,12 +167,7 @@ impl ReconcileAction {
             }
             ReconcileAction::Drop { plugin_id } => {
                 let plugin_id = plugin_id.clone();
-                _ = app_handle.emit(
-                    "core.plugin.disabling",
-                    json!({
-                            "plugin_id": plugin_id.clone(),
-                    }),
-                );
+
                 // We get rid of our state about this plugin
                 plugins_states.plugin_states.remove(&plugin_id);
                 plugin_id

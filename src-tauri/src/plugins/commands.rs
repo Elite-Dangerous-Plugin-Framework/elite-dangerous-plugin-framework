@@ -1,8 +1,12 @@
-use std::sync::Arc;
+use std::{path::PathBuf, str::FromStr, sync::Arc};
 
+use dirs::data_local_dir;
 use serde_json::json;
 use tauri::{Manager, Runtime};
+use tauri_plugin_store::StoreExt;
 use tokio::sync::RwLock;
+
+use crate::plugins::PluginStateSource;
 
 use super::{frontend_server::HttpServerState, PluginsState};
 
@@ -32,6 +36,54 @@ pub(crate) async fn get_import_path_for_plugin<R: Runtime>(
         Ok(
             json!({"success": true, "import": format!("{import}/index.js"), "hash": x.frontend_hash.clone()}),
         )
+    } else {
+        Ok(json!({"success": false, "reason": "PLUGIN_NOT_FOUND"}))
+    }
+}
+
+#[tauri::command]
+pub(crate) async fn open_plugins_dir<R: Runtime>(
+    app: tauri::AppHandle<R>,
+    plugin_id: Option<String>,
+) -> Result<serde_json::Value, String> {
+    use tauri_plugin_opener::OpenerExt;
+
+    let plugin_id = match plugin_id {
+        Some(x) => x,
+        None => {
+            // no plugin ID specified -> we return the user plugin folder
+            let user_plugin_dir: String = app
+                .store("store.json")
+                .map_err(|x| format!("couldn't get store: {x}"))?
+                .get("plugin_dir")
+                .and_then(|x| {
+                    let x = x.to_string();
+                    PathBuf::from_str(&x).ok()
+                })
+                .unwrap_or(data_local_dir().unwrap().join("edpf-plugins"))
+                .display()
+                .to_string();
+            app.opener()
+                .open_path(user_plugin_dir, None::<&str>)
+                .map_err(|x| format!("failed to open dir: {x}"))?;
+            return Ok(json!({"success": true}));
+        }
+    };
+
+    let state = app.state::<Arc<RwLock<PluginsState>>>();
+    let data = state.read().await;
+    if let Some(x) = data.plugin_states.get(&plugin_id) {
+        if x.source != PluginStateSource::UserProvided {
+            Ok(json!({"success": false, "reason": "PLUGIN_NOT_USERPROVIDED"}))
+        } else {
+            app.opener()
+                .open_path(
+                    x.frontend_path().parent().unwrap().display().to_string(),
+                    None::<&str>,
+                )
+                .map_err(|x| format!("failed to open dir: {x}"))?;
+            Ok(json!({"success": true}))
+        }
     } else {
         Ok(json!({"success": false, "reason": "PLUGIN_NOT_FOUND"}))
     }

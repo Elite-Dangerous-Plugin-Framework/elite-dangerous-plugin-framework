@@ -10,7 +10,9 @@ use std::{
 use anyhow::anyhow;
 use dirs::data_local_dir;
 use get_dir_hash::Options;
+use itertools::Itertools;
 use plugin_manifest::PluginManifest;
+use plugin_settings::PluginSettings;
 use reconciler_utils::ReconcileAction;
 use schemars::JsonSchema;
 use serde::Serialize;
@@ -70,27 +72,41 @@ impl PluginsState {
                 PathBuf::from_str(&x).ok()
             })
             .unwrap_or(data_local_dir().unwrap().join("edpf-plugins"));
-        let active_plugin_ids: Vec<String> = match app_handle.store("plugins.json") {
-            Ok(x) => x
-                .get("active_ids")
-                .and_then(|x| serde_json::from_value(x).ok())
-                .unwrap_or_default(),
-            Err(e) => {
-                return Err(anyhow!("could not get store.json: {e}"));
-            }
-        };
+
+        let user_plugin_manifests_and_ids_from_dir =
+            glob::glob(user_plugin_dir.join("*/manifest.json").to_str().unwrap())
+                .map_err(|x| anyhow!("failed to get user plugin manifests: {x}"))?
+                .flatten()
+                .filter_map(|path| {
+                    if let Some(p) = path.parent() {
+                        let plugin_id = p.file_name()?.to_str()?.to_string();
+
+                        if plugin_id
+                            .chars()
+                            .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-')
+                        {
+                            return Some((path, plugin_id));
+                        }
+                    }
+                    None
+                })
+                .collect_vec();
+
+        let all_known_user_plugin_ids = user_plugin_manifests_and_ids_from_dir
+            .iter()
+            .map(|x| x.1.clone())
+            .collect_vec();
+        let active_plugin_ids: Vec<String> =
+            PluginSettings::get_active_ids(app_handle, &all_known_user_plugin_ids)?;
         let active_plugin_ids_set: HashSet<_> = active_plugin_ids.into_iter().collect();
 
-        let user_plugin_manifests_from_dir =
-            glob::glob(user_plugin_dir.join("*/manifest.json").to_str().unwrap())
-                .map_err(|x| anyhow!("failed to get user plugin manifests: {x}"))?;
         // This is what we know internally
         // We need this to stop plugins that were deleted between the last reconcile and now
         let known_user_plugin_ids: HashSet<_> = self
             .plugin_states
             .values()
             .filter(|x| x.source == PluginStateSource::UserProvided)
-            .map(|x| x.id())
+            .map(|x| x.id.clone())
             .collect();
 
         let mut failed_path_bufs = vec![];
@@ -99,7 +115,7 @@ impl PluginsState {
         let mut actions_map = HashMap::new();
 
         // Here we define the **expected** state. We write this to discovered_user_plugins
-        for path in user_plugin_manifests_from_dir.flatten() {
+        for (path, plugin_id) in user_plugin_manifests_and_ids_from_dir {
             let manifest = match PluginState::get_manifest(&path) {
                 Ok(x) => x,
                 Err(e) => {
@@ -116,7 +132,7 @@ impl PluginsState {
 
             let frontend_hash = PluginState::get_frontend_dir_hash(&path);
             let desired_state = PluginState {
-                current_state: match active_plugin_ids_set.contains(&manifest.id()) {
+                current_state: match active_plugin_ids_set.contains(&plugin_id) {
                     true => match &frontend_hash {
                         Some(_frontend_hash) => PluginCurrentState::Running {},
                         None => PluginCurrentState::FailedToStart {
@@ -129,11 +145,11 @@ impl PluginsState {
                 plugin_dir: path.parent().unwrap().to_path_buf(),
                 manifest,
                 source: PluginStateSource::UserProvided,
+                id: plugin_id.clone(),
             };
-            let plugin_id = desired_state.id();
 
             if let Some(x) =
-                discovered_user_plugins.insert(desired_state.id(), desired_state.clone())
+                discovered_user_plugins.insert(plugin_id.clone(), desired_state.clone())
             {
                 error!(
                     "Plugin conflict! The following manifests share the plugin ID '{}': {}, {}",
@@ -189,6 +205,7 @@ impl PluginsState {
 /// Defines the current state of the plugin. Mainly used for reconciliation and for the Frontend to display all plugins / specific plugin
 #[derive(Debug, Serialize, Clone, JsonSchema)]
 pub(crate) struct PluginState {
+    id: String,
     current_state: PluginCurrentState,
     plugin_dir: PathBuf,
     manifest: PluginManifest,
@@ -249,7 +266,11 @@ impl PluginState {
     }
 
     #[instrument(ret)]
+    // rustfmt skipped for legible match
+    #[rustfmt::skip]
     /// Returns the action to take. if [None] is returned this means that we are already in sync.
+    ///
+    /// A reconcile action is self-contained to the point it contains all the information to perform its task, if given the entire plugins state.
     fn get_reconcile_action(
         current_plugin_state: Option<&Self>,
         desired_plugin_state: &PluginState,
@@ -257,72 +278,65 @@ impl PluginState {
         let current_plugin_state = match current_plugin_state {
             Some(x) => x,
             None => {
-                return match &desired_plugin_state.current_state {
-                    // Plugin is not known yet. If we want it running, we have to spawn an adopt action.
-                    PluginCurrentState::Running { .. } => Some(ReconcileAction::Adopt {
-                        plugin_state: Box::new(desired_plugin_state.clone()),
-                    }),
-                    // else we still need to get the system to know about it
-                    _ => Some(ReconcileAction::Adopt {
-                        plugin_state: Box::new(desired_plugin_state.clone()),
-                    }),
-                };
+                let should_be_running = matches!(&desired_plugin_state.current_state, PluginCurrentState::Running {..});
+
+                return Some(ReconcileAction::Adopt { plugin_state: Box::new(desired_plugin_state.clone()), start: should_be_running })
             }
         };
 
-        let currently_running = !matches!(
-            current_plugin_state.current_state,
-            PluginCurrentState::Disabled {}
-                | PluginCurrentState::Disabling {}
-                | PluginCurrentState::FailedToStart { .. }
-                | PluginCurrentState::Starting { .. }
-        );
         let manifest_synced = current_plugin_state
             .manifest
             .eq(&desired_plugin_state.manifest);
         // only relevant if both desired and current state is in running
         let frontend_dirs_synced =
             current_plugin_state.frontend_hash == desired_plugin_state.frontend_hash;
+        let plugin_id = current_plugin_state.id.clone();
 
-        match (currently_running, &desired_plugin_state.current_state) {
-            (true, PluginCurrentState::Disabled {}) => {
-                // We are currently running, but shouldn't be. Stop
-                Some(ReconcileAction::Stop {
-                    plugin_id: current_plugin_state.id(),
-                })
-            }
-            (true, PluginCurrentState::Starting { .. })
-            | (false, PluginCurrentState::Disabling {}) => {
-                // in states that indicate convergence towards the desired state. We do nothing
+        match (&current_plugin_state.current_state, &desired_plugin_state.current_state) {
+            (_, PluginCurrentState::Disabling { .. } | PluginCurrentState::FailedToStart { .. } | PluginCurrentState::Starting { .. }) => {
+                error!("received a desired state that should not be possible due to reconciliation logic");
                 None
             }
-            (true, PluginCurrentState::FailedToStart { reasons }) => todo!(),
-            (true, PluginCurrentState::Running {}) => todo!(),
-            (true, PluginCurrentState::Disabling {}) => todo!(),
-            (false, PluginCurrentState::Disabled {}) => {
-                // Not running and we dont want it to run -> keep disabled
-                // We can update the manifest if its out of sync though
-                if manifest_synced {
-                    None
-                } else {
-                    let manifest = desired_plugin_state.manifest.clone();
-                    Some(ReconcileAction::SyncInPlace {
-                        plugin_id: current_plugin_state.id(),
-                        patch: Box::new(move |x| {
-                            x.manifest = manifest.clone();
-                        }),
-                    })
+            (PluginCurrentState::Disabled {  }, PluginCurrentState::Disabled {  }) => match (manifest_synced, frontend_dirs_synced) {
+                (true, true) => None,
+                _ => {
+                    let new_hash = desired_plugin_state.frontend_hash.clone();
+                    let new_manifest = desired_plugin_state.manifest.clone();
+                    
+                    Some(ReconcileAction::SyncInPlace { plugin_id, patch: Box::new(move |x| {
+                        x.frontend_hash = new_hash.clone();
+                        x.manifest = new_manifest.clone();
+                    })})
+                }
+            },
+            // From Disabled / Failed to Enabled
+            (PluginCurrentState::Disabled {  } | PluginCurrentState::Disabling {  } | PluginCurrentState::FailedToStart { .. }, | PluginCurrentState::Running {  }) => {
+                Some(ReconcileAction::Start { plugin_id })
+            },
+            // Already running, but might need a restart
+            (PluginCurrentState::Running {  }, PluginCurrentState::Running {  }) => {
+                match (manifest_synced, frontend_dirs_synced) {
+                    (true, true) => None,
+                    _ => {
+                        let new_hash = desired_plugin_state.frontend_hash.clone();
+                        let new_manifest = desired_plugin_state.manifest.clone();
+                        
+                        Some(ReconcileAction::Restart { plugin_id, patch: Box::new(move |x| {
+                                x.frontend_hash = new_hash.clone();
+                                x.manifest = new_manifest.clone();
+                            }) 
+                        })
+                    }
                 }
             }
-            (false, PluginCurrentState::Starting { metadata }) => todo!(),
-            (false, PluginCurrentState::FailedToStart { reasons }) => todo!(),
-            (false, PluginCurrentState::Running {}) => todo!(),
-            (false, PluginCurrentState::Disabling {}) => todo!(),
+            // Noop - already converging towards that state
+            (PluginCurrentState::Disabling {  }, PluginCurrentState::Disabled {  }) | 
+            (PluginCurrentState::Starting { .. } ,  PluginCurrentState::Running {  }) => None,
+            // Running or stuck trying to run while trying to be stopped
+            (PluginCurrentState::FailedToStart { .. } | PluginCurrentState::Running {  } | PluginCurrentState::Starting { .. }, PluginCurrentState::Disabled {  }) => {
+                Some(ReconcileAction::Stop { plugin_id })
+            }
         }
-    }
-
-    fn id(&self) -> String {
-        self.manifest.id()
     }
 }
 

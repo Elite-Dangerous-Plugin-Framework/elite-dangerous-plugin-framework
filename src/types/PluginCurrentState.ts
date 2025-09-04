@@ -29,9 +29,20 @@ export type PluginCurrentStateDisabling = z.infer<
   typeof PluginCurrentStateDisablingZod
 >;
 
+export const PluginCurrentStateRunningZod = z.object({
+  Running: z.object({
+    reasons: z.array(z.string()),
+  }),
+});
+export type PluginCurrentStateRunning = z.infer<
+  typeof PluginCurrentStateRunningZod
+>;
+
 export const PluginCurrentStateZod = z.union([
   PluginCurrentStateStartingZod,
-  PluginCurrentStateDisabledZod, PluginCurrentStateFailedToStartZod, PluginCurrentStateDisablingZod,
+  PluginCurrentStateDisabledZod, PluginCurrentStateFailedToStartZod, PluginCurrentStateDisablingZod, PluginCurrentStateRunningZod
 ]);
 
 export type PluginCurrentState = z.infer<typeof PluginCurrentStateZod>;
+
+export type PluginCurrentStateKeys = keyof PluginCurrentStateDisabled | keyof PluginCurrentStateStarting | keyof PluginCurrentStateFailedToStart | keyof PluginCurrentStateDisabling | keyof PluginCurrentStateRunning

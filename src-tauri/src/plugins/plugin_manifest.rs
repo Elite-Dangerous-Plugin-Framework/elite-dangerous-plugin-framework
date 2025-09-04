@@ -32,21 +32,6 @@ pub(crate) struct PluginManifestV1Alpha {
     pub(crate) remote_manifest: Option<PluginRemoteManifestResolutionStrategy>,
 }
 
-
-impl PluginManifest {
-    pub(crate) fn id(&self) -> String {
-        match self {
-            PluginManifest::V1Alpha(plugin_manifest_v1_alpha) => plugin_manifest_v1_alpha
-                .name
-                .to_lowercase()
-                .replace(" ", "_")
-                .chars()
-                .filter(|x| x.is_alphanumeric() || *x == '-' || *x == '_')
-                .collect(),
-        }
-    }
-}
-
 #[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Eq, JsonSchema)]
 pub(crate) struct PluginVersionOption {
     /// A semantic version (e.g. 1.2.3)

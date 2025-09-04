@@ -1,13 +1,18 @@
 import { useEffect, useState } from "react";
 
 import { SettingsMainNoneSelected } from "./SettingsCore";
-import { getBorderColourForstate } from "./utils";
 import { PluginState } from "../types/PluginState";
 import { SettingsPluginPane } from "./SettingsPluginPane";
 import { listen } from "@tauri-apps/api/event";
 import { getAllPluginStates } from "../commands/getAllPluginStates";
-
-
+import { PluginCurrentStateKeys } from "../types/PluginCurrentState";
+import {
+  countPluginStates,
+  inferCurrentState,
+  PluginStateUIData,
+} from "./utils";
+import { ZondiconsFolder } from "../icons/pluginType";
+import { invoke } from "@tauri-apps/api/core";
 
 export default function Settings() {
   const [pluginStates, setPluginStates] =
@@ -21,14 +26,13 @@ export default function Settings() {
           .map(([id, v]) => ({ ...v, id }))
           .sort((a, b) => a.id.localeCompare(b.id));
         setPluginStates(result);
-      })()
-    })
+      })();
+    });
 
     return () => {
-      updateUnlisten.then(e => e())
-    }
-  }, [])
-
+      updateUnlisten.then((e) => e());
+    };
+  }, []);
 
   useEffect(() => {
     (async () => {
@@ -45,30 +49,40 @@ export default function Settings() {
 
   return (
     <main className="min-h-[100vh] bg-neutral-900 flex flex-row text-white select-none">
-      <section
-        id="plugin_select"
-        className="w-[200px] bg-neutral-800 fixed min-h-[100vh]"
-      >
-        <h1
-          className="p-2 cursor-pointer hover:bg-white/10"
-          onClick={() => setActiveId(undefined)}
-        >
-          Your Plugins
-        </h1>
-        {(pluginStates ?? []).length === 0 ? (
-          <p>No plugins loaded</p>
-        ) : (
-          pluginStates!.map((e) => (
-            <SettingsSidebarPlugin
-              onPluginSelected={(id) => {
-                setActiveId(id);
-              }}
-              key={e.id}
-              plugin={e}
-              selected={activeId == e.id}
-            />
-          ))
-        )}
+      <section id="plugin_select" className="w-[200px] bg-neutral-800 fixed">
+        <div className="flex flex-col h-[100vh] overflow-y-scroll ">
+          <h1
+            className="p-2 cursor-pointer hover:bg-white/10"
+            onClick={() => setActiveId(undefined)}
+          >
+            Your Plugins
+          </h1>
+          {(pluginStates ?? []).length === 0 ? (
+            <p>No plugins loaded</p>
+          ) : (
+            pluginStates!.map((e) => (
+              <SettingsSidebarPlugin
+                onPluginSelected={(id) => {
+                  setActiveId(id);
+                }}
+                key={e.id}
+                plugin={e}
+                selected={activeId == e.id}
+              />
+            ))
+          )}
+          <div className="flex-1" />
+          <hr className=" mx-2 text-gray-600" />
+          <button
+            onClick={() => {
+              invoke("open_plugins_dir", {});
+            }}
+            className="flex cursor-pointer flex-row justify-center items-center gap-2 py-2 hover:bg-white/10"
+          >
+            <ZondiconsFolder />
+            <span>Open Plugin Folder</span>
+          </button>
+        </div>
       </section>
       <section id="settings" className="flex-1 pl-[200px] inline-flex flex-col">
         {activeId === undefined ? (
@@ -122,52 +136,34 @@ function SettingsSidebarPlugin({
   return (
     <button
       onClick={() => onPluginSelected(plugin.id)}
-      className={`inline-flex border-l-8 flex-row w-full p-2 text-xs cursor-pointer hover:bg-white/10 ${getBorderColourForstate(
-        currentState
-      )} ${selected ? "bg-white/40" : ""}`}
+      style={{
+        backgroundColor: selected
+          ? PluginStateUIData[currentState].colour + "40"
+          : "unset",
+      }}
+      className={`inline-flex items-center gap-1 flex-row w-full p-2 text-xs cursor-pointer hover:bg-white/10 ${
+        selected ? " underline" : ""
+      }`}
     >
+      <StatusIndicator state={currentState} />
       <p className=" inline-flex justify-baseline items-center gap-1">{name}</p>
     </button>
   );
 }
 
-export type PluginStatesSimple =
-  | "Disabled"
-  | "Starting"
-  | "FailedToStart"
-  | "Running"
-  | "Disabling";
-
-function countPluginStates(
-  plugins: PluginState[]
-): Record<PluginStatesSimple, number> {
-  const response = {
-    Disabled: 0,
-    Starting: 0,
-    FailedToStart: 0,
-    Running: 0,
-    Disabling: 0,
-  };
-
-  for (const plugin of plugins) {
-    response[inferCurrentState(plugin.current_state)]++;
-  }
-  return response;
-}
-
-function inferCurrentState(
-  current: PluginState["current_state"]
-): PluginStatesSimple {
-  for (const item of [
-    "Disabled",
-    "Starting",
-    "FailedToStart",
-    "Running",
-    "Disabling",
-  ] as const) {
-    if (item in current) {
-      return item;
-    }
-  }
-  throw new Error("state could not be mapped");
+export function StatusIndicator({ state }: { state: PluginCurrentStateKeys }) {
+  return (
+    <span title={state} className="relative flex size-3">
+      {PluginStateUIData[state].pulsating && (
+        <span
+          style={{ backgroundColor: PluginStateUIData[state].colour }}
+          className="absolute inline-flex h-full w-full animate-ping rounded-full opacity-75"
+        ></span>
+      )}{" "}
+      <span
+        style={{ backgroundColor: PluginStateUIData[state].colour }}
+        className="relative inline-flex size-3 rounded-full "
+      ></span>
+    </span>
+  );
 }

@@ -1,9 +1,18 @@
 import { useEffect, useRef, useState } from "react";
-import { PluginTypeIcon } from "../icons/pluginType";
+import {
+  PluginStartStopButton,
+  PluginTypeIcon,
+  ZondiconsFolder,
+} from "../icons/pluginType";
 import { PluginState } from "../types/PluginState";
 import { invoke } from "@tauri-apps/api/core";
 import z from "zod";
 import React from "react";
+import {
+  PluginCurrentState,
+  PluginCurrentStateKeys,
+} from "../types/PluginCurrentState";
+import { StatusIndicator } from "./Settings";
 
 export interface SettingsPluginPaneProps {
   plugin: PluginState & { id: string };
@@ -31,21 +40,21 @@ function getDisplayVersion(plugin: PluginState) {
 type SettingsComponentLoadState =
   | { type: "Loading" }
   | {
-    type: "PluginNotFound";
-  }
+      type: "PluginNotFound";
+    }
   | {
-    type: "FailedAwaitImport";
-  }
+      type: "FailedAwaitImport";
+    }
   | {
-    type: "NoSettingsExported";
-  }
+      type: "NoSettingsExported";
+    }
   | {
-    type: "SettingsExportNotHTMLElement";
-  }
+      type: "SettingsExportNotHTMLElement";
+    }
   | {
-    type: "Registered";
-    registeredAs: string;
-  };
+      type: "Registered";
+      registeredAs: string;
+    };
 
 export function SettingsPluginPane({ plugin }: SettingsPluginPaneProps) {
   const pluginVersion = getDisplayVersion(plugin);
@@ -105,8 +114,9 @@ export function SettingsPluginPane({ plugin }: SettingsPluginPaneProps) {
         return;
       }
 
-      let customElementID = `settings-${plugin.id}-${result.success ? result.hash : "no-hash"
-        }`;
+      let customElementID = `settings-${plugin.id}-${
+        result.success ? result.hash : "no-hash"
+      }`;
       if (!customElements.get(customElementID)) {
         customElements.define(customElementID, module.Settings);
       }
@@ -119,16 +129,50 @@ export function SettingsPluginPane({ plugin }: SettingsPluginPaneProps) {
 
   return (
     <div className="flex flex-col p-2">
-      <span className=" inline-flex gap-1 items-center">
-        <PluginTypeIcon type={plugin.source} />{" "}
-        <span className=" text-xs text-gray-500">{plugin.source} · </span>
-        <span className="text-xs text-gray-500">
-          {pluginVersion ?? "version info missing"}
-        </span>
-      </span>
-      <h2>
-        <span>{getName(plugin)}</span> <span></span>
-      </h2>
+      <section
+        id="header"
+        className="flex flex-col md:flex-row justify-between"
+      >
+        <div className="flex flex-col">
+          <span className="inline-flex gap-1 items-center">
+            <PluginTypeIcon type={plugin.source} />{" "}
+            <span className=" text-xs text-gray-500">{plugin.source} · </span>
+            <span className="text-xs text-gray-500">
+              {pluginVersion ?? "version info missing"}
+            </span>
+          </span>
+          <h2 className=" inline-flex gap-2 items-baseline">
+            <StatusIndicator
+              state={Object.keys(plugin.current_state)[0] as any}
+            />
+            <span title={plugin.id}>{getName(plugin)}</span> <span></span>
+          </h2>
+        </div>
+        <section id="actions" className="inline-flex rounded-md gap-1">
+          <button
+            id="plugin-start-stop"
+            className="rounded-lg p-2 bg-white/10 hover:bg-white/20 cursor-pointer "
+          >
+            <PluginStartStopButton
+              className="h-6 w-6 "
+              currentState={"Starting"}
+            />
+          </button>
+          {plugin.source === "UserProvided" && (
+            <button
+              id="plugin-start-stop"
+              onClick={async () =>
+                await invoke("open_plugins_dir", { pluginId: plugin.id })
+              }
+              title="Open Plugin Folder"
+              className="rounded-lg bg-white/10 hover:bg-white/20 p-2 cursor-pointer "
+            >
+              <ZondiconsFolder className="h-6 w-6" />
+            </button>
+          )}
+        </section>
+      </section>
+
       <section id="description">
         {typeof description !== "string" ? (
           <p className=" text-sm italic text-gray-400">
@@ -138,6 +182,7 @@ export function SettingsPluginPane({ plugin }: SettingsPluginPaneProps) {
           <p className="text-sm text-gray-200">{description}</p>
         )}
       </section>
+
       <hr className=" text-neutral-600 my-2" />
       <section className="" id="plugin_settings">
         {settingsLoadState.type === "Loading" && <p>Loading…</p>}

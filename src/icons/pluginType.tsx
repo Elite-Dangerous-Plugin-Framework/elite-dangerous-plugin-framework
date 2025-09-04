@@ -1,5 +1,6 @@
 import { SVGProps } from "react";
 import { PluginState } from "../types/PluginState";
+import { PluginCurrentStateKeys } from "../types/PluginCurrentState";
 
 export function PluginTypeIcon(
   props: SVGProps<SVGSVGElement> & { type: PluginState["source"] }
@@ -55,4 +56,88 @@ function IconoirUser(props: SVGProps<SVGSVGElement>) {
       />
     </svg>
   );
+}
+
+export function ZondiconsFolder(props: SVGProps<SVGSVGElement>) {
+  return (
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      width="1em"
+      height="1em"
+      viewBox="0 0 20 20"
+      {...props}
+    >
+      {/* Icon from Zondicons by Steve Schoger - https://github.com/dukestreetstudio/zondicons/blob/master/LICENSE */}
+      <path
+        fill="currentColor"
+        d="M0 4c0-1.1.9-2 2-2h7l2 2h7a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H2a2 2 0 0 1-2-2z"
+      />
+    </svg>
+  );
+}
+
+export function PluginStartStopButton(
+  props: {
+    currentState: PluginCurrentStateKeys;
+  } & SVGProps<SVGSVGElement>
+) {
+  const newProps = {
+    ...props,
+    currentState: undefined,
+  } as Omit<typeof props, "currentState"> & { currentState?: any };
+  delete newProps.currentState;
+
+  if (props.currentState === "Disabled" || props.currentState === "Starting") {
+    // its stopped - display Start button
+    return (
+      <svg
+        xmlns="http://www.w3.org/2000/svg"
+        width="1em"
+        height="1em"
+        viewBox="0 0 20 20"
+        {...newProps}
+      >
+        {/* Icon from Zondicons by Steve Schoger - https://github.com/dukestreetstudio/zondicons/blob/master/LICENSE */}
+        <path
+          fill="currentColor"
+          d="M2.93 17.07A10 10 0 1 1 17.07 2.93A10 10 0 0 1 2.93 17.07m12.73-1.41A8 8 0 1 0 4.34 4.34a8 8 0 0 0 11.32 11.32M7 6l8 4l-8 4z"
+        />
+      </svg>
+    );
+  } else if (
+    props.currentState === "Disabling" ||
+    props.currentState === "Running"
+  ) {
+    return (
+      <svg
+        xmlns="http://www.w3.org/2000/svg"
+        width="1em"
+        height="1em"
+        viewBox="0 0 20 20"
+        {...newProps}
+      >
+        {/* Icon from Zondicons by Steve Schoger - https://github.com/dukestreetstudio/zondicons/blob/master/LICENSE */}
+        <path
+          fill="currentColor"
+          d="M2.93 17.07A10 10 0 1 1 17.07 2.93A10 10 0 0 1 2.93 17.07m12.73-1.41A8 8 0 1 0 4.34 4.34a8 8 0 0 0 11.32 11.32M7 6h2v8H7zm4 0h2v8h-2z"
+        />
+      </svg>
+    );
+  } else if (props.currentState === "FailedToStart") {
+    return (
+      <svg
+        xmlns="http://www.w3.org/2000/svg"
+        width="1em"
+        height="1em"
+        viewBox="0 0 20 20"
+        {...newProps}
+      >
+        {/* Icon from Zondicons by Steve Schoger - https://github.com/dukestreetstudio/zondicons/blob/master/LICENSE */}
+        <path
+          fill="currentColor"
+          d="M2.93 17.07A10 10 0 1 1 17.07 2.93A10 10 0 0 1 2.93 17.07M9 5v6h2V5zm0 8v2h2v-2z"
+        />
+      </svg>
+    );
+  }
 }
