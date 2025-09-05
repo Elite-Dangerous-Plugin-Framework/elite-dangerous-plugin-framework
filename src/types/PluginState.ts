@@ -3,6 +3,7 @@ import { PluginCurrentStateZod } from "./PluginCurrentState";
 import { ManifestZod } from "./PluginManifest";
 
 export const PluginStateZod = z.object({
+  id: z.string(),
   current_state: PluginCurrentStateZod,
   plugin_dir: z.string(),
   frontend_hash: z.string(),

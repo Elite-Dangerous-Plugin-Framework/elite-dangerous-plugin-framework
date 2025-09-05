@@ -2,7 +2,7 @@ use std::fmt;
 
 use serde::Serialize;
 use serde_json::json;
-use tauri::{AppHandle, Emitter, Wry};
+use tauri::{AppHandle, Emitter, Runtime, Wry};
 
 use super::{PluginCurrentState, PluginState, PluginsState};
 use anyhow::anyhow;
@@ -94,10 +94,10 @@ impl ReconcileAction {
     /// Applies the action.
     ///
     /// Responsible for modifying the PluginsState, modifying the HTTP Server config, and notifying to Frontend via an event that it should load/unload a plugin
-    pub(super) fn apply(
+    pub(super) fn apply<R: Runtime>(
         self,
         plugins_states: &mut PluginsState,
-        app_handle: &AppHandle<Wry>,
+        app_handle: &AppHandle<R>,
     ) -> anyhow::Result<()> {
         let targeted_id = match self {
             ReconcileAction::Adopt {

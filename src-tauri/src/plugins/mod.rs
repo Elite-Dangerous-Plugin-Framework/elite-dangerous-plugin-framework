@@ -16,7 +16,7 @@ use plugin_settings::PluginSettings;
 use reconciler_utils::ReconcileAction;
 use schemars::JsonSchema;
 use serde::Serialize;
-use tauri::{AppHandle, Manager, Wry};
+use tauri::{AppHandle, Manager, Runtime, Wry};
 use tauri_plugin_store::StoreExt;
 use tokio::{sync::RwLock, time::sleep};
 use tracing::{debug, error, info, instrument};
@@ -55,6 +55,14 @@ impl PluginsState {
 
     pub(crate) fn get_cloned(&self, id: &str) -> Option<PluginState> {
         self.plugin_states.get(id).cloned()
+    }
+
+    pub(crate) async fn stop<R: Runtime>(&mut self, id: String, app_handle: &AppHandle<R>) -> anyhow::Result<()> {
+        ReconcileAction::Stop { plugin_id: id }.apply(self, app_handle)
+    }
+
+    pub(crate) async fn start<R: Runtime>(&mut self, id: String, app_handle: &AppHandle<R>) -> anyhow::Result<()> {
+        ReconcileAction::Start { plugin_id: id }.apply(self, app_handle)
     }
 
     /// Runs a reconciliation against all plugins.  
@@ -228,14 +236,6 @@ impl PluginState {
     }
     pub(crate) fn frontend_path(&self) -> PathBuf {
         self.plugin_dir.join("frontend")
-    }
-
-    async fn stop(&mut self, app_handle: &AppHandle<Wry>) -> anyhow::Result<()> {
-        Ok(())
-    }
-
-    async fn start(&mut self, app_handle: &AppHandle<Wry>) -> anyhow::Result<()> {
-        Ok(())
     }
 
     fn get_manifest(manifest_path: &PathBuf) -> Result<PluginManifest, String> {

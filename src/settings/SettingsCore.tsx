@@ -24,7 +24,7 @@ function SettingsStateVisualizer({
   pluginStateCount: Record<PluginCurrentStateKeys, number>;
 }) {
   return (
-    <div className="flex flex-row mt-2">
+    <div className="flex flex-row mt-2 gap-1">
       {(
         [
           "Disabled",
@@ -41,9 +41,9 @@ function SettingsStateVisualizer({
               borderColor: PluginStateUIData[e].colour,
               color: PluginStateUIData[e].colour,
             }}
-            className={
-              "p-1 text-xs inline-flex flex-row gap-1 justify-baseline border-1 rounded-lg "
-            }
+            className={`p-1 text-xs inline-flex flex-row gap-1 justify-baseline border-1 rounded-lg ${
+              PluginStateUIData[e].pulsating ? "animate-pulse" : ""
+            } `}
             key={e}
           >
             <span>{e}:</span>

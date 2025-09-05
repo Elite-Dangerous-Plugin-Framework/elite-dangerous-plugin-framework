@@ -1,7 +1,7 @@
 use std::{path::PathBuf, str::FromStr, sync::Arc};
 
 use dirs::data_local_dir;
-use serde_json::json;
+use serde_json::{json, Value};
 use tauri::{Manager, Runtime};
 use tauri_plugin_store::StoreExt;
 use tokio::sync::RwLock;
@@ -105,4 +105,38 @@ pub(crate) async fn open_settings<R: Runtime>(app: tauri::AppHandle<R>) -> Resul
         _ = win.set_focus()
     }
     Ok(())
+}
+
+#[tauri::command]
+pub(crate) async fn start_plugin<R: Runtime>(
+    app: tauri::AppHandle<R>,
+    plugin_id: String,
+) -> Result<Value, String> {
+    let state = app.state::<Arc<RwLock<PluginsState>>>();
+    let mut data = state.write().await;
+    Ok(match data.start(plugin_id, &app).await {
+        Ok(_) => {
+            json!({"success": true})
+        }
+        Err(e) => {
+            json!({"success": false, "reason": e.to_string()})
+        }
+    })
+}
+
+#[tauri::command]
+pub(crate) async fn stop_plugin<R: Runtime>(
+    app: tauri::AppHandle<R>,
+    plugin_id: String,
+) -> Result<Value, String> {
+    let state = app.state::<Arc<RwLock<PluginsState>>>();
+    let mut data = state.write().await;
+    Ok(match data.stop(plugin_id, &app).await {
+        Ok(_) => {
+            json!({"success": true})
+        }
+        Err(e) => {
+            json!({"success": false, "reason": e.to_string()})
+        }
+    })
 }

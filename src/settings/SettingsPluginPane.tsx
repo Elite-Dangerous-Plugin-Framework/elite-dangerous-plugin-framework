@@ -13,6 +13,7 @@ import {
   PluginCurrentStateKeys,
 } from "../types/PluginCurrentState";
 import { StatusIndicator } from "./Settings";
+import { inferCurrentState } from "./utils";
 
 export interface SettingsPluginPaneProps {
   plugin: PluginState & { id: string };
@@ -127,6 +128,8 @@ export function SettingsPluginPane({ plugin }: SettingsPluginPaneProps) {
     })();
   }, [plugin.id]);
 
+  const currentState = inferCurrentState(plugin.current_state);
+
   return (
     <div className="flex flex-col p-2">
       <section
@@ -149,13 +152,45 @@ export function SettingsPluginPane({ plugin }: SettingsPluginPaneProps) {
           </h2>
         </div>
         <section id="actions" className="inline-flex rounded-md gap-1">
+          {currentState == "FailedToStart" && (
+            <button
+              id="plugin-abort-start"
+              className="rounded-lg p-2 bg-white/10 hover:bg-white/20 cursor-pointer "
+              title="Stop trying to Start"
+            >
+              <PluginStartStopButton
+                className="h-6 w-6 "
+                currentState={"Abort"}
+                onClick={() => {
+                  invoke("stop_plugin", { pluginId: plugin.id });
+                }}
+              />
+            </button>
+          )}
           <button
             id="plugin-start-stop"
-            className="rounded-lg p-2 bg-white/10 hover:bg-white/20 cursor-pointer "
+            disabled={
+              currentState === "Starting" || currentState === "Disabling"
+            }
+            className={`rounded-lg p-2 bg-white/10 hover:bg-white/20 ${
+              currentState === "Starting" || currentState === "Disabling"
+                ? "cursor-progress animate-pulse"
+                : "cursor-pointer"
+            } `}
           >
             <PluginStartStopButton
-              className="h-6 w-6 "
-              currentState={"Starting"}
+              className={`h-6 w-6 `}
+              currentState={currentState}
+              onClick={() => {
+                if (
+                  currentState === "Disabled" ||
+                  currentState === "FailedToStart"
+                ) {
+                  invoke("start_plugin", { pluginId: plugin.id });
+                } else if (currentState === "Running") {
+                  invoke("stop_plugin", { pluginId: plugin.id });
+                }
+              }}
             />
           </button>
           {plugin.source === "UserProvided" && (
@@ -173,7 +208,7 @@ export function SettingsPluginPane({ plugin }: SettingsPluginPaneProps) {
         </section>
       </section>
 
-      <section id="description">
+      <section className="mt-2 -tracking-tighter" id="description">
         {typeof description !== "string" ? (
           <p className=" text-sm italic text-gray-400">
             no description provided…

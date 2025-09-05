@@ -52,7 +52,7 @@ export const PluginStateUIData: Record<
     pulsating: false,
   },
   Disabling: {
-    colour: "#697296",
+    colour: "#595256",
     pulsating: true,
   },
   Running: {

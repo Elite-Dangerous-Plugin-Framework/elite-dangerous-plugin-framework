@@ -121,6 +121,8 @@ pub fn run() {
             plugins::commands::get_import_path_for_plugin,
             plugins::commands::open_settings,
             plugins::commands::open_plugins_dir,
+            plugins::commands::start_plugin,
+            plugins::commands::stop_plugin,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
