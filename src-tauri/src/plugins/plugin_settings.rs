@@ -7,7 +7,8 @@ use serde::{Deserialize, Serialize};
 use tauri::{App, AppHandle, Runtime};
 use tauri_plugin_store::{StoreBuilder, StoreExt};
 #[derive(Debug, Serialize, Deserialize, Default)]
-/// This contains the entire Configurable State for a plugin.
+/// This contains the entire **generic** Configurable State for a plugin.  
+/// Settings read/set from the Plugins themselves are managed separately
 pub(crate) struct PluginSettings {
     /// If true, the Plugin is running. If false, it's not running
     pub(crate) enabled: bool,

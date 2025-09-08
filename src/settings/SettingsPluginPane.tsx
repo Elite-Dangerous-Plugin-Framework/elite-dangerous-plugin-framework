@@ -41,21 +41,21 @@ function getDisplayVersion(plugin: PluginState) {
 type SettingsComponentLoadState =
   | { type: "Loading" }
   | {
-      type: "PluginNotFound";
-    }
+    type: "PluginNotFound";
+  }
   | {
-      type: "FailedAwaitImport";
-    }
+    type: "FailedAwaitImport";
+  }
   | {
-      type: "NoSettingsExported";
-    }
+    type: "NoSettingsExported";
+  }
   | {
-      type: "SettingsExportNotHTMLElement";
-    }
+    type: "SettingsExportNotHTMLElement";
+  }
   | {
-      type: "Registered";
-      registeredAs: string;
-    };
+    type: "Registered";
+    registeredAs: string;
+  };
 
 export function SettingsPluginPane({ plugin }: SettingsPluginPaneProps) {
   const pluginVersion = getDisplayVersion(plugin);
@@ -115,9 +115,8 @@ export function SettingsPluginPane({ plugin }: SettingsPluginPaneProps) {
         return;
       }
 
-      let customElementID = `settings-${plugin.id}-${
-        result.success ? result.hash : "no-hash"
-      }`;
+      let customElementID = `settings-${plugin.id}-${result.success ? result.hash : "no-hash"
+        }`;
       if (!customElements.get(customElementID)) {
         customElements.define(customElementID, module.Settings);
       }
@@ -172,11 +171,10 @@ export function SettingsPluginPane({ plugin }: SettingsPluginPaneProps) {
             disabled={
               currentState === "Starting" || currentState === "Disabling"
             }
-            className={`rounded-lg p-2 bg-white/10 hover:bg-white/20 ${
-              currentState === "Starting" || currentState === "Disabling"
-                ? "cursor-progress animate-pulse"
-                : "cursor-pointer"
-            } `}
+            className={`rounded-lg p-2 bg-white/10 hover:bg-white/20 ${currentState === "Starting" || currentState === "Disabling"
+              ? "cursor-progress animate-pulse"
+              : "cursor-pointer"
+              } `}
           >
             <PluginStartStopButton
               className={`h-6 w-6 `}
@@ -219,6 +217,14 @@ export function SettingsPluginPane({ plugin }: SettingsPluginPaneProps) {
       </section>
 
       <hr className=" text-neutral-600 my-2" />
+      {
+        currentState === "FailedToStart" && <div className="text-red-400 p-4">
+          <h2>Failed to start plugin…</h2>
+          {
+            (((plugin.current_state as any).FailedToStart).reasons as string[]).map(e => <p key={e}>{e}</p>)
+          }
+        </div>
+      }
       <section className="" id="plugin_settings">
         {settingsLoadState.type === "Loading" && <p>Loading…</p>}
         {settingsLoadState.type === "FailedAwaitImport" && (

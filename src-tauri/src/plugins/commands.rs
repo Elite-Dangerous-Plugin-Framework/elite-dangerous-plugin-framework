@@ -5,6 +5,7 @@ use serde_json::{json, Value};
 use tauri::{Manager, Runtime};
 use tauri_plugin_store::StoreExt;
 use tokio::sync::RwLock;
+use tracing::warn;
 
 use crate::plugins::PluginStateSource;
 
@@ -125,6 +126,24 @@ pub(crate) async fn start_plugin<R: Runtime>(
 }
 
 #[tauri::command]
+pub(crate) async fn start_plugin_failed<R: Runtime>(
+    app: tauri::AppHandle<R>,
+    plugin_id: String,
+    reasons: Vec<String>,
+) -> Result<Value, String> {
+    let state = app.state::<Arc<RwLock<PluginsState>>>();
+    let mut data = state.write().await;
+    Ok(match data.start_failed(plugin_id, reasons, &app).await {
+        Ok(_) => {
+            json!({"success": true})
+        }
+        Err(e) => {
+            json!({"success": false, "reason": e.to_string()})
+        }
+    })
+}
+
+#[tauri::command]
 pub(crate) async fn stop_plugin<R: Runtime>(
     app: tauri::AppHandle<R>,
     plugin_id: String,
@@ -139,4 +158,62 @@ pub(crate) async fn stop_plugin<R: Runtime>(
             json!({"success": false, "reason": e.to_string()})
         }
     })
+}
+
+#[tauri::command]
+pub(crate) async fn finalize_stop_plugin<R: Runtime>(
+    app: tauri::AppHandle<R>,
+    plugin_id: String,
+) -> Result<Value, String> {
+    let state = app.state::<Arc<RwLock<PluginsState>>>();
+    let mut data = state.write().await;
+    Ok(match data.finalize_stop(plugin_id, &app).await {
+        Ok(_) => {
+            json!({"success": true})
+        }
+        Err(e) => {
+            json!({"success": false, "reason": e.to_string()})
+        }
+    })
+}
+
+#[tauri::command]
+pub(crate) async fn get_plugin_by_instance_id<R: Runtime>(
+    app: tauri::AppHandle<R>,
+    instance_id: String,
+) -> Result<Value, String> {
+    let state = app.state::<Arc<RwLock<PluginsState>>>();
+
+    let data = state.read().await;
+
+    Ok(match data.get_cloned_by_runtime_token(&instance_id) {
+        Some(x) => {
+            json!({"success": true, "data": x})
+        }
+        None => {
+            json!({"success": false, "reason": "MISSING_OR_BAD_TOKEN"})
+        }
+    })
+}
+
+#[tauri::command]
+pub(crate) async fn get_instance_id_by_plugin<R: Runtime>(
+    app: tauri::AppHandle<R>,
+    plugin_id: String,
+    root_token: String,
+) -> Result<Value, String> {
+    let state = app.state::<Arc<RwLock<PluginsState>>>();
+
+    let data = state.read().await;
+
+    Ok(
+        match data.get_runtime_token_by_root_token(&plugin_id, &root_token) {
+            Some(x) => {
+                json!({"success": true, "data": x})
+            }
+            None => {
+                json!({"success": false, "reason": "MISSING_OR_BAD_TOKEN"})
+            }
+        },
+    )
 }

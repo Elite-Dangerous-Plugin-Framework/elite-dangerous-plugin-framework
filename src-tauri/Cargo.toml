@@ -48,6 +48,7 @@ tower = "0.5.2"
 tower-http = { version = "0.6.6", features = ["cors", "trace"] }
 tauri-plugin-devtools = "2.0.0"
 schemars = "1.0.4"
+uuid = { version = "1.18.1", features = ["v4"] }
 
 [target.'cfg(not(any(target_os = "android", target_os = "ios")))'.dependencies]
 tauri-plugin-single-instance = "2"

@@ -2,7 +2,8 @@ use std::fmt;
 
 use serde::Serialize;
 use serde_json::json;
-use tauri::{AppHandle, Emitter, Runtime, Wry};
+use tauri::{plugin, AppHandle, Emitter, Runtime, Wry};
+use tracing::{instrument, warn};
 
 use super::{PluginCurrentState, PluginState, PluginsState};
 use anyhow::anyhow;
@@ -94,6 +95,7 @@ impl ReconcileAction {
     /// Applies the action.
     ///
     /// Responsible for modifying the PluginsState, modifying the HTTP Server config, and notifying to Frontend via an event that it should load/unload a plugin
+    #[instrument]
     pub(super) fn apply<R: Runtime>(
         self,
         plugins_states: &mut PluginsState,
@@ -126,7 +128,9 @@ impl ReconcileAction {
                 };
 
                 state.current_state = PluginCurrentState::Starting { metadata: vec![] };
-
+                plugins_states
+                    .runtime_token_lookup
+                    .insert(uuid::Uuid::new_v4().to_string(), plugin_id.clone());
                 /*
                 The Frontend side listens for this event and will start the plugin
                 (or at least try to)
@@ -153,6 +157,9 @@ impl ReconcileAction {
                 };
 
                 state.current_state = PluginCurrentState::Disabling {};
+                plugins_states
+                    .runtime_token_lookup
+                    .remove_by_right(&plugin_id);
 
                 /*
                 The Frontend side listens for this event and will stop the plugin
@@ -177,7 +184,7 @@ impl ReconcileAction {
                     plugin_id: plugin_id.clone(),
                     patch,
                 }
-                .apply(plugins_states, app_handle);
+                .apply(plugins_states, app_handle)?;
 
                 let state = match plugins_states.plugin_states.get(&plugin_id) {
                     None => {
@@ -196,13 +203,17 @@ impl ReconcileAction {
                         ReconcileAction::Start {
                             plugin_id: plugin_id.clone(),
                         }
-                        .apply(plugins_states, app_handle);
+                        .apply(plugins_states, app_handle)?;
                     }
                     PluginCurrentState::Starting { .. }
                     | PluginCurrentState::FailedToStart { .. }
                     | PluginCurrentState::Running { .. } => {
                         // Tell the frontend to do a restart
-                        todo!()
+                        warn!("TODO - not implemented: restart");
+                        ReconcileAction::Start {
+                            plugin_id: plugin_id.clone(),
+                        }
+                        .apply(plugins_states, app_handle)?;
                     }
                 }
                 plugin_id

@@ -123,6 +123,11 @@ pub fn run() {
             plugins::commands::open_plugins_dir,
             plugins::commands::start_plugin,
             plugins::commands::stop_plugin,
+            plugins::commands::get_plugin_by_instance_id,
+            plugins::commands::get_instance_id_by_plugin,
+            plugins::commands::start_plugin_failed,
+            plugins::commands::finalize_stop_plugin,
+            plugins::get_root_token_once,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

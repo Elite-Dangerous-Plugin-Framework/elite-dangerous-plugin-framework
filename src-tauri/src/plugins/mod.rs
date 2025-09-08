@@ -8,6 +8,7 @@ use std::{
 };
 
 use anyhow::anyhow;
+use bimap::BiHashMap;
 use dirs::data_local_dir;
 use get_dir_hash::Options;
 use itertools::Itertools;
@@ -16,6 +17,7 @@ use plugin_settings::PluginSettings;
 use reconciler_utils::ReconcileAction;
 use schemars::JsonSchema;
 use serde::Serialize;
+use serde_json::{json, Value};
 use tauri::{AppHandle, Manager, Runtime, Wry};
 use tauri_plugin_store::StoreExt;
 use tokio::{sync::RwLock, time::sleep};
@@ -44,13 +46,57 @@ pub(super) async fn spawn_reconciler_blocking(app_state: &AppHandle<Wry>) -> ! {
 #[derive(Debug, Serialize, Clone)]
 pub(crate) struct PluginsState {
     plugin_states: HashMap<String, PluginState>,
+    /// Contains a runtime generated hash (a secret, essentially), mapped to a plugin ID
+    /// This is used by the Plugin Context in the Frontend during creation. Creating is rejected if this Token is incorrect
+    #[serde(skip_serializing)]    
+    runtime_token_lookup: BiHashMap<String, String>,
+    /// This is the "admin" token, if you want. It is needed to get fetch [Self::runtime_token_lookup]'s tokens, which makes it the required to spawn Plugin instances
+    /// 
+    /// The only way to get this Token is by calling the [get_root_token_once] command. As the name implies, this can be only called once. Subsequent requests are rejected.
+    /// Because the main window is called before any plugins, it can acquire it first. If a Plugin somehow manages to call [get_root_token_once], that call is rejected.
+    #[serde(skip_serializing)]    
+    root_token: String,
+    #[serde(skip_serializing)]    
+    root_token_requested: bool
 }
+
+#[tauri::command]
+pub(crate) async fn get_root_token_once<R: Runtime>(
+    app: tauri::AppHandle<R>,
+) -> Result<Value, String> {
+    let state = app.state::<Arc<RwLock<PluginsState>>>();
+
+    let mut data = state.write().await;
+    Ok(if data.root_token_requested {
+        json!({"success": false, "reason": "TOKEN_ALREADY_REQUESTED"})
+    } else {
+        data.root_token_requested = true;
+        json!({"success": true, "data": data.root_token.clone()})
+    })
+}
+
+
 impl PluginsState {
     /// this just creates an empty hashmap. Use reconcile function to sync the states
     pub(crate) fn new() -> Self {
         Self {
             plugin_states: HashMap::new(),
+            runtime_token_lookup: BiHashMap::new(),
+            root_token: uuid::Uuid::new_v4().to_string(),
+            root_token_requested: false,
         }
+    }
+
+    pub(crate) fn get_cloned_by_runtime_token(&self, token: &str) -> Option<PluginState> {
+        let plugin_id = self.runtime_token_lookup.get_by_left(token)?;
+        self.get_cloned(plugin_id)
+    }
+
+    pub(crate) fn get_runtime_token_by_root_token(&self, plugin_id: &str, root_token: &str) -> Option<String> {
+        if self.root_token != root_token {
+            return None
+        }
+        self.runtime_token_lookup.get_by_right(plugin_id).cloned()
     }
 
     pub(crate) fn get_cloned(&self, id: &str) -> Option<PluginState> {
@@ -61,8 +107,22 @@ impl PluginsState {
         ReconcileAction::Stop { plugin_id: id }.apply(self, app_handle)
     }
 
+    pub(crate) async fn finalize_stop<R: Runtime>(&mut self, id: String, app_handle: &AppHandle<R>) -> anyhow::Result<()> {
+        ReconcileAction::SyncInPlace { plugin_id: id, patch: Box::new(|x| {
+            x.current_state = PluginCurrentState::Disabled {  }
+        }) }.apply(self, app_handle)
+    }
+
     pub(crate) async fn start<R: Runtime>(&mut self, id: String, app_handle: &AppHandle<R>) -> anyhow::Result<()> {
         ReconcileAction::Start { plugin_id: id }.apply(self, app_handle)
+    }
+
+    pub(crate) async fn start_failed<R: Runtime>(&mut self, id: String, reasons: Vec<String>, app_handle: &AppHandle<R>) -> anyhow::Result<()> {
+        ReconcileAction::SyncInPlace { plugin_id: id, patch: Box::new(move |x| {
+            if matches!(&x.current_state, PluginCurrentState::Starting { .. }) {
+                x.current_state = PluginCurrentState::FailedToStart { reasons: reasons.clone() }
+            }
+        })}.apply(self, app_handle)
     }
 
     /// Runs a reconciliation against all plugins.  
