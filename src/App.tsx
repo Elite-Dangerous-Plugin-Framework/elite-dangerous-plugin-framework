@@ -157,7 +157,6 @@ function App() {
             console.warn("todo: cleanup")
           }
           await invoke("finalize_stop_plugin", { pluginId: pluginID })
-
         })()
       }
     }
