@@ -127,6 +127,7 @@ pub fn run() {
             plugins::commands::get_instance_id_by_plugin,
             plugins::commands::start_plugin_failed,
             plugins::commands::finalize_stop_plugin,
+            plugins::commands::finalize_start_plugin,
             plugins::get_root_token_once,
         ])
         .run(tauri::generate_context!())

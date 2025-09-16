@@ -31,7 +31,6 @@ export type PluginCurrentStateDisabling = z.infer<
 
 export const PluginCurrentStateRunningZod = z.object({
   Running: z.object({
-    reasons: z.array(z.string()),
   }),
 });
 export type PluginCurrentStateRunning = z.infer<

@@ -126,6 +126,23 @@ pub(crate) async fn start_plugin<R: Runtime>(
 }
 
 #[tauri::command]
+pub(crate) async fn finalize_start_plugin<R: Runtime>(
+    app: tauri::AppHandle<R>,
+    plugin_id: String,
+) -> Result<Value, String> {
+    let state = app.state::<Arc<RwLock<PluginsState>>>();
+    let mut data = state.write().await;
+    Ok(match data.finalize_start(plugin_id, &app).await {
+        Ok(_) => {
+            json!({"success": true})
+        }
+        Err(e) => {
+            json!({"success": false, "reason": e.to_string()})
+        }
+    })
+}
+
+#[tauri::command]
 pub(crate) async fn start_plugin_failed<R: Runtime>(
     app: tauri::AppHandle<R>,
     plugin_id: String,

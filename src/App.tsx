@@ -23,7 +23,7 @@ const LoadedPluginStateLookup = z.record(
       customElementName: z.string(),
       capabilities: z.object({}),
       context: z.instanceof(PluginContext),
-    })
+    }),
   ])
 );
 
@@ -32,9 +32,11 @@ function App() {
     {}
   );
 
-  const rootTokenRef = useRef<string>()
-  const updatePluginIdsBufferRef = useRef<Record<string, null>>({})
-  const updatePluginIdsDebouncerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const rootTokenRef = useRef<string>();
+  const updatePluginIdsBufferRef = useRef<Record<string, null>>({});
+  const updatePluginIdsDebouncerRef = useRef<ReturnType<
+    typeof setTimeout
+  > | null>(null);
 
   const [appWin, setAppWin] = useState<Window>();
   const [isMaximized, setIsMaximized] = useState(false);
@@ -51,40 +53,48 @@ function App() {
     getAllPluginStates().then((e) => setPluginStates([e, undefined]));
 
     const unlisten = listen("core/plugins/update", (ev) => {
-      const resp = z.object({ id: z.string(), pluginState: PluginStateZod }).parse(ev.payload)
+      console.log(ev.payload)
+      const resp = z
+        .object({ id: z.string(), pluginState: PluginStateZod })
+        .parse(ev.payload);
       // we debouce this because otherwise we drop events in case we get many updates in quick succession (e.g. reconcile)
-      updatePluginIdsBufferRef.current[resp.id] = null // discount hashset
+      updatePluginIdsBufferRef.current[resp.id] = null; // discount hashset
       if (updatePluginIdsDebouncerRef.current !== null) {
-        clearTimeout(updatePluginIdsDebouncerRef.current)
+        clearTimeout(updatePluginIdsDebouncerRef.current);
       }
       updatePluginIdsDebouncerRef.current = setTimeout(async () => {
         const state = await getAllPluginStates();
-        updatePluginIdsDebouncerRef.current = null
-        setPluginStates([state, Object.keys(updatePluginIdsBufferRef.current)])
-      }, 100)
-
-
-    })
-
+        updatePluginIdsDebouncerRef.current = null;
+        setPluginStates([state, Object.keys(updatePluginIdsBufferRef.current)]);
+        updatePluginIdsBufferRef.current = {}
+      }, 100);
+    });
 
     invoke("get_root_token_once").then((e) => {
-      const response = z.object({ success: z.literal(true), data: z.string() }).or(z.object({ success: z.literal(false), reason: z.string() })).parse(e);
+      const response = z
+        .object({ success: z.literal(true), data: z.string() })
+        .or(z.object({ success: z.literal(false), reason: z.string() }))
+        .parse(e);
       if (!response.success) {
         if (rootTokenRef.current === undefined) {
-          console.error("critital error: root token was already requested, the main App cannot acquire it. Please restart EDPF.")
-          return
+          console.error(
+            "critital error: root token was already requested, the main App cannot acquire it. Please restart EDPF."
+          );
+          return;
         } else {
-          console.info("root token was already requested, but we already have a reference.")
+          console.info(
+            "root token was already requested, but we already have a reference."
+          );
         }
       } else {
-        rootTokenRef.current = response.data
-        console.log("root token was inserted")
+        rootTokenRef.current = response.data;
+        console.log("root token was inserted");
       }
-    })
+    });
 
     return () => {
-      unlisten.then(e => e())
-    }
+      unlisten.then((e) => e());
+    };
   }, []);
 
   useEffect(() => {
@@ -111,8 +121,11 @@ function App() {
               await invoke("get_import_path_for_plugin", { pluginId: pluginID })
             );
           if (!result.success) {
-            await invoke("start_plugin_failed", { pluginId: pluginID, reasons: [result.reason] })
-            return
+            await invoke("start_plugin_failed", {
+              pluginId: pluginID,
+              reasons: [result.reason],
+            });
+            return;
           }
           // now try to import the module
           let module: any;
@@ -120,13 +133,19 @@ function App() {
             module = await import(/* @vite-ignore */ result.import);
           } catch (err) {
             console.error(err);
-            await invoke("start_plugin_failed", { pluginId: pluginID, reasons: ["MODULE_IMPORT_FAILED"] })
-            return
+            await invoke("start_plugin_failed", {
+              pluginId: pluginID,
+              reasons: ["MODULE_IMPORT_FAILED"],
+            });
+            return;
           }
           // if here, module exists
           if (!module.default) {
             // but doesnt have a default export
-            await invoke("start_plugin_failed", { pluginId: pluginID, reasons: ["NO_DEFAULT_EXPORT"] })
+            await invoke("start_plugin_failed", {
+              pluginId: pluginID,
+              reasons: ["NO_DEFAULT_EXPORT"],
+            });
             return;
           }
           // This essentially checks if the export is a class definition that inherits HTMLElement
@@ -137,7 +156,10 @@ function App() {
               module.default.prototype
             )
           ) {
-            await invoke("start_plugin_failed", { pluginId: pluginID, reasons: ["DEFAULT_EXPORT_NOT_HTMLELEMENT"] })
+            await invoke("start_plugin_failed", {
+              pluginId: pluginID,
+              reasons: ["DEFAULT_EXPORT_NOT_HTMLELEMENT"],
+            });
             return;
           }
           let customElementID = `main-${pluginID}-${result.success ? result.hash : "no-hash"
@@ -145,19 +167,77 @@ function App() {
           if (!customElements.get(customElementID)) {
             customElements.define(customElementID, module.default);
           } else {
-            console.info("custom element was already defined")
+            console.info("custom element was already defined");
           }
-          console.info(customElementID, "registered:", customElements.get(customElementID))
-        })()
+          console.info(
+            customElementID,
+            "registered:",
+            customElements.get(customElementID)
+          );
+          // We spawn the HTML Element
+          let item: HTMLElement;
+          try {
+            item = new module.default();
+          } catch (e) {
+            await invoke("start_plugin_failed", {
+              pluginId: pluginID,
+              reasons: ["INSTANTIATION_FAILED"],
+            });
+            return;
+          }
+          if (!(item instanceof HTMLElement)) {
+            await invoke("start_plugin_failed", {
+              pluginId: pluginID,
+              reasons: ["PLUGIN_INSTANCE_NOT_HTMLELEMENT"],
+            });
+            return;
+          }
+          if (
+            !("initPlugin" in item) ||
+            typeof item.initPlugin !== "function"
+          ) {
+            console.log(item)
+            await invoke("start_plugin_failed", {
+              pluginId: pluginID,
+              reasons: ["PLUGIN_MISSING_INIT_FUNCTION"],
+            });
+            return;
+          }
+          try {
+            item.initPlugin("TODO");
+          } catch {
+            await invoke("start_plugin_failed", {
+              pluginId: pluginID,
+              reasons: ["PLUGIN_MISSING_INIT_FUNCTION_ERRORED"],
+            });
+            return;
+          }
+          document.getElementById("plugins")!.appendChild(item);
+          loadedPluginsLookup.current[pluginID] = {
+            type: "Running",
+            customElementName: customElementID,
+            capabilities: {},
+            context: new PluginContext(""),
+            ref: item,
+          };
+          await invoke("finalize_start_plugin", {
+            pluginId: pluginID
+          })
+        })();
       }
       if ("Disabling" in pluginState.current_state) {
         (async () => {
           // Do reconciliation for Disabling
           if (loadedPluginsLookup.current[pluginID]) {
-            console.warn("todo: cleanup")
+            const data = loadedPluginsLookup.current[pluginID]
+            if (data.type === "Running" && !!data.ref) {
+              data.ref.remove()
+              data.ref = undefined
+            }
           }
-          await invoke("finalize_stop_plugin", { pluginId: pluginID })
-        })()
+          await invoke("finalize_stop_plugin", { pluginId: pluginID });
+          return;
+        })();
       }
     }
   }, [pluginStates, updateIDs]);
@@ -227,6 +307,7 @@ function App() {
           <CloseIcon className="w-6 h-6" />
         </button>
       </header>
+      <section id="plugins"></section>
     </main>
   );
 }

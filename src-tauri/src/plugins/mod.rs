@@ -125,6 +125,12 @@ impl PluginsState {
         })}.apply(self, app_handle)
     }
 
+    pub(crate) async fn finalize_start<R: Runtime>(&mut self, id: String, app_handle: &AppHandle<R>) -> anyhow::Result<()> {
+        ReconcileAction::SyncInPlace { plugin_id: id, patch: Box::new(|x| {
+            x.current_state = PluginCurrentState::Running {  }
+        }) }.apply(self, app_handle)
+    }
+
     /// Runs a reconciliation against all plugins.  
     /// This will
     /// - fetch all user-provided and embedded plugins
