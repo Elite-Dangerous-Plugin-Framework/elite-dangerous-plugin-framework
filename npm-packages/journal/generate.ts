@@ -1,11 +1,50 @@
 #!/usr/bin/env bun
 
-import { compile, compileFromFile } from "json-schema-to-typescript";
+import { compile } from "json-schema-to-typescript";
 import $RefParser from "@apidevtools/json-schema-ref-parser";
-import { glob, globSync, globStream, globStreamSync, Glob } from "glob";
-import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { glob } from "glob";
+import { mkdir, rm, writeFile } from "node:fs/promises";
 import { basename, join } from "node:path";
-import mergeAllOf from "json-schema-merge-allof";
+
+function injectBigint(schema: any): void {
+  if (!schema || typeof schema !== "object") return;
+
+  const t = schema.type;
+  const isInteger =
+    t === "integer" || (Array.isArray(t) && t.includes("integer"));
+  if (isInteger && !schema.tsType) {
+    schema.tsType = "bigint";
+  }
+
+  const keys = [
+    "properties",
+    "patternProperties",
+    "additionalProperties",
+    "items",
+    "oneOf",
+    "anyOf",
+    "allOf",
+    "$defs",
+    "definitions",
+  ];
+
+  for (const k of keys) {
+    const child = schema[k];
+    if (!child) continue;
+
+    if (Array.isArray(child)) {
+      for (const s of child) injectBigint(s);
+    } else if (typeof child === "object") {
+      if (k === "items" && Array.isArray(child)) {
+        for (const it of child) injectBigint(it);
+      } else {
+        for (const name of Object.keys(child)) {
+          injectBigint(child[name]);
+        }
+      }
+    }
+  }
+}
 
 const journalEntryPoints = await glob("schema/schemas/*/*.json");
 
@@ -30,7 +69,6 @@ const barrelFileContents: string[] = [
 const eventNames: string[] = [];
 
 for (const schemaPath of journalEntryPoints) {
-  console.info(basename(join(schemaPath, "..")));
   if (basename(join(schemaPath, "..")) === "common") {
     continue;
   }
@@ -59,7 +97,18 @@ for (const schemaPath of journalEntryPoints) {
       })
     ).replaceAll("export ", "") + `\n\nexport default ${name}Event;`;
   await writeFile(join(generatedRoot, `${name}.ts`), result);
+
+  injectBigint(schema);
+  const resultBigInt =
+    (
+      await compile(schema as any, `${name}Event_BI`, {
+        format: true,
+      })
+    ).replaceAll("export ", "") + `\n\nexport default ${name}Event_BI;`;
+  await writeFile(join(generatedRoot, `${name}.bi.ts`), resultBigInt);
+
   barrelFileContents.push(`import ${name}Event from './${name}.js'`);
+  barrelFileContents.push(`import ${name}Event_BI from './${name}.bi.js'`);
   eventNames.push(name + "Event");
 }
 
@@ -67,6 +116,8 @@ for (const schemaPath of journalEntryPoints) {
 barrelFileContents.push(
   `export type JournalEvent = `,
   ...eventNames.map((e) => `| ${e}`),
+  `export type JournalEvent_BI = `,
+  ...eventNames.map((e) => `| ${e}_BI`),
 );
 
 await writeFile(join(generatedRoot, "index.ts"), barrelFileContents.join("\n"));
