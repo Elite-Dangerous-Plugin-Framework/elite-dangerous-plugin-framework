@@ -5,13 +5,13 @@ import {
   FullScreenIcon,
   MinimizeIcon,
   SettingsIcon,
-} from "./icons/navbar";
+} from "../icons/navbar";
 import { getCurrentWindow, Window } from "@tauri-apps/api/window";
 import { invoke } from "@tauri-apps/api/core";
-import { PluginState, PluginStateZod } from "./types/PluginState";
-import { getAllPluginStates } from "./commands/getAllPluginStates";
+import { PluginState, PluginStateZod } from "../types/PluginState";
+import { getAllPluginStates } from "../commands/getAllPluginStates";
 import z from "zod";
-import { PluginContext } from "./main/PluginContext";
+import { PluginContext } from "./PluginContext";
 import { listen } from "@tauri-apps/api/event";
 
 const LoadedPluginStateLookup = z.record(
@@ -213,11 +213,12 @@ function App() {
             return;
           }
           document.getElementById("plugins")!.appendChild(item);
+          const { data }: { data: string } = await invoke("get_instance_id_by_plugin", { pluginId: pluginID, rootToken: rootTokenRef.current })
           loadedPluginsLookup.current[pluginID] = {
             type: "Running",
             customElementName: customElementID,
             capabilities: {},
-            context: new PluginContext(""),
+            context: new PluginContext(data),
             ref: item,
           };
           await invoke("finalize_start_plugin", {
