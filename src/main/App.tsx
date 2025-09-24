@@ -1,37 +1,15 @@
 import { useEffect, useRef, useState } from "react";
-import {
-  CloseIcon,
-  EditPlugins,
-  FullScreenIcon,
-  MinimizeIcon,
-  SettingsIcon,
-} from "../icons/navbar";
 import { getCurrentWindow, Window } from "@tauri-apps/api/window";
 import { invoke } from "@tauri-apps/api/core";
 import { PluginState, PluginStateZod } from "../types/PluginState";
 import { getAllPluginStates } from "../commands/getAllPluginStates";
 import z from "zod";
-import { PluginContext } from "./PluginContext";
 import { listen } from "@tauri-apps/api/event";
-
-const LoadedPluginStateLookup = z.record(
-  z.string(),
-  z.union([
-    z.object({
-      type: z.literal("Running"),
-      ref: z.instanceof(HTMLElement).optional(),
-      customElementName: z.string(),
-      capabilities: z.object({}),
-      context: z.instanceof(PluginContext),
-    }),
-  ])
-);
+import { Header } from "./Header";
+import { startAndLoadPlugin } from "./startAndLoadPlugin";
+import PluginsManager from "./PluginsManager";
 
 function App() {
-  const loadedPluginsLookup = useRef<z.infer<typeof LoadedPluginStateLookup>>(
-    {}
-  );
-
   const rootTokenRef = useRef<string>();
   const updatePluginIdsBufferRef = useRef<Record<string, null>>({});
   const updatePluginIdsDebouncerRef = useRef<ReturnType<
@@ -40,11 +18,28 @@ function App() {
 
   const [appWin, setAppWin] = useState<Window>();
   const [isMaximized, setIsMaximized] = useState(false);
+  const [isEditMode, setIsEditMode] = useState(false);
+  const pluginManagerRef = useRef<PluginsManager>();
 
   /// Contains the current plugin state and the plugin that was just updated. If undefined, we assume initial startup
   const [[pluginStates, updateIDs], setPluginStates] = useState<
     [Record<string, PluginState>, string[] | undefined]
   >([{}, undefined]);
+
+  useEffect(() => {
+    PluginsManager.register();
+    if (pluginManagerRef.current) {
+      return;
+    }
+    const manager = new PluginsManager();
+    manager.dataset["mode"] = isEditMode ? "edit" : "default";
+    pluginManagerRef.current = manager;
+    document.getElementById("main-window")!.appendChild(manager);
+  }, []);
+
+  useEffect(() => {
+    pluginManagerRef.current!.dataset["mode"] = isEditMode ? "edit" : "default";
+  }, [isEditMode]);
 
   useEffect(() => {
     const win = getCurrentWindow();
@@ -53,7 +48,7 @@ function App() {
     getAllPluginStates().then((e) => setPluginStates([e, undefined]));
 
     const unlisten = listen("core/plugins/update", (ev) => {
-      console.log(ev.payload)
+      console.log(ev.payload);
       const resp = z
         .object({ id: z.string(), pluginState: PluginStateZod })
         .parse(ev.payload);
@@ -65,8 +60,10 @@ function App() {
       updatePluginIdsDebouncerRef.current = setTimeout(async () => {
         const state = await getAllPluginStates();
         updatePluginIdsDebouncerRef.current = null;
-        setPluginStates([state, Object.keys(updatePluginIdsBufferRef.current)]);
-        updatePluginIdsBufferRef.current = {}
+        const updatedPluginIDs = Object.keys(updatePluginIdsBufferRef.current)
+        setPluginStates([state, updatedPluginIDs]);
+
+        updatePluginIdsBufferRef.current = {};
       }, 100);
     });
 
@@ -104,136 +101,16 @@ function App() {
       const [pluginID, pluginState] = item;
       if ("Starting" in pluginState.current_state) {
         // Do reconciliation for Starting
-        (async () => {
-          const result = z
-            .object({
-              success: z.literal(false),
-              reason: z.enum(["PLUGIN_NOT_FOUND"]),
-            })
-            .or(
-              z.object({
-                success: z.literal(true),
-                import: z.string(),
-                hash: z.string(),
-              })
-            )
-            .parse(
-              await invoke("get_import_path_for_plugin", { pluginId: pluginID })
-            );
-          if (!result.success) {
-            await invoke("start_plugin_failed", {
-              pluginId: pluginID,
-              reasons: [result.reason],
-            });
-            return;
-          }
-          // now try to import the module
-          let module: any;
-          try {
-            module = await import(/* @vite-ignore */ result.import);
-          } catch (err) {
-            console.error(err);
-            await invoke("start_plugin_failed", {
-              pluginId: pluginID,
-              reasons: ["MODULE_IMPORT_FAILED"],
-            });
-            return;
-          }
-          // if here, module exists
-          if (!module.default) {
-            // but doesnt have a default export
-            await invoke("start_plugin_failed", {
-              pluginId: pluginID,
-              reasons: ["NO_DEFAULT_EXPORT"],
-            });
-            return;
-          }
-          // This essentially checks if the export is a class definition that inherits HTMLElement
-          if (
-            typeof module.default !== "function" ||
-            !Object.prototype.isPrototypeOf.call(
-              HTMLElement.prototype,
-              module.default.prototype
-            )
-          ) {
-            await invoke("start_plugin_failed", {
-              pluginId: pluginID,
-              reasons: ["DEFAULT_EXPORT_NOT_HTMLELEMENT"],
-            });
-            return;
-          }
-          let customElementID = `main-${pluginID}-${result.success ? result.hash : "no-hash"
-            }`;
-          if (!customElements.get(customElementID)) {
-            customElements.define(customElementID, module.default);
-          } else {
-            console.info("custom element was already defined");
-          }
-          console.info(
-            customElementID,
-            "registered:",
-            customElements.get(customElementID)
-          );
-          // We spawn the HTML Element
-          let item: HTMLElement;
-          try {
-            item = new module.default();
-          } catch (e) {
-            await invoke("start_plugin_failed", {
-              pluginId: pluginID,
-              reasons: ["INSTANTIATION_FAILED"],
-            });
-            return;
-          }
-          if (!(item instanceof HTMLElement)) {
-            await invoke("start_plugin_failed", {
-              pluginId: pluginID,
-              reasons: ["PLUGIN_INSTANCE_NOT_HTMLELEMENT"],
-            });
-            return;
-          }
-          if (
-            !("initPlugin" in item) ||
-            typeof item.initPlugin !== "function"
-          ) {
-            console.log(item)
-            await invoke("start_plugin_failed", {
-              pluginId: pluginID,
-              reasons: ["PLUGIN_MISSING_INIT_FUNCTION"],
-            });
-            return;
-          }
-          try {
-            item.initPlugin("TODO");
-          } catch {
-            await invoke("start_plugin_failed", {
-              pluginId: pluginID,
-              reasons: ["PLUGIN_MISSING_INIT_FUNCTION_ERRORED"],
-            });
-            return;
-          }
-          document.getElementById("plugins")!.appendChild(item);
-          const { data }: { data: string } = await invoke("get_instance_id_by_plugin", { pluginId: pluginID, rootToken: rootTokenRef.current })
-          loadedPluginsLookup.current[pluginID] = {
-            type: "Running",
-            customElementName: customElementID,
-            capabilities: {},
-            context: new PluginContext(data),
-            ref: item,
-          };
-          await invoke("finalize_start_plugin", {
-            pluginId: pluginID
-          })
-        })();
+        startAndLoadPlugin(pluginID, rootTokenRef, pluginManagerRef.current!);
       }
       if ("Disabling" in pluginState.current_state) {
         (async () => {
           // Do reconciliation for Disabling
-          if (loadedPluginsLookup.current[pluginID]) {
-            const data = loadedPluginsLookup.current[pluginID]
+          if (pluginManagerRef.current?.loadedPluginsLookup[pluginID]) {
+            const data = pluginManagerRef.current.loadedPluginsLookup[pluginID];
             if (data.type === "Running" && !!data.ref) {
-              data.ref.remove()
-              data.ref = undefined
+              data.ref.remove();
+              data.ref = undefined;
             }
           }
           await invoke("finalize_stop_plugin", { pluginId: pluginID });
@@ -244,71 +121,23 @@ function App() {
   }, [pluginStates, updateIDs]);
 
   return (
-    <main className="bg-slate-950 min-h-[100vh] text-white flex flex-col group">
-      <header
-        data-tauri-drag-region
-        className="flex justify-end gap-1 items-end group-hover:visible invisible cursor-move "
-      >
-        <button
-          title="Open Settings"
-          onClick={() => {
-            invoke("open_settings");
-          }}
-          className="px-2 cursor-pointer hover:bg-white/10"
-        >
-          <SettingsIcon className="w-6 h-6" />
-        </button>
-        <button
-          title="Change Plugin Arrangement"
-          className="px-2 cursor-pointer hover:bg-white/10"
-        >
-          <EditPlugins className="w-6 h-6" editing={false} />
-        </button>
-        <div className="flex-1" />
-        <button
-          title="Minimize"
-          className="px-2 cursor-pointer hover:bg-blue-900"
-        >
-          <MinimizeIcon
-            className="w-6 h-6"
-            onClick={() => {
-              if (!appWin) {
-                return;
-              }
-              appWin.minimize();
-            }}
-          />
-        </button>
-        <button
-          title="Maximize"
-          className="px-2 cursor-pointer hover:bg-blue-900"
-        >
-          <FullScreenIcon
-            className="w-6 h-6"
-            isMaximized={isMaximized}
-            onClick={() => {
-              if (!appWin) {
-                return;
-              }
-              appWin.maximize().then(async () => {
-                setIsMaximized(await appWin.isMaximized());
-              });
-            }}
-          />
-        </button>
-        <button
-          onClick={() => {
-            if (!appWin) {
-              return;
-            }
-            appWin.close();
-          }}
-          className="px-2 cursor-pointer hover:bg-red-900"
-        >
-          <CloseIcon className="w-6 h-6" />
-        </button>
-      </header>
-      <section id="plugins"></section>
+    <main
+      id="main-window"
+      className="bg-slate-950 min-h-[100vh] text-white flex flex-col group"
+    >
+      <Header
+        appWin={appWin}
+        isMaximized={isMaximized}
+        setIsMaximized={setIsMaximized}
+        isEditMode={isEditMode}
+        toggleEditMode={() => setIsEditMode(!isEditMode)}
+      />
+      {/** On init plugins are placed in the plugins staging ground. The plugins-manager is notified out this node */}
+      <div id="plugins-staging-ground" className="hidden" />
+      {/** note that we don't use React for the plugins section, but plain old JavaScript and DOM Manipulation
+       * This is because React will not safely *move* HTML Elements between Nodes, and instead delete and recreate them.
+       * It's easier (and mostly safer!) to just have all things Plugins be managed by our own Custom Element
+       */}
     </main>
   );
 }

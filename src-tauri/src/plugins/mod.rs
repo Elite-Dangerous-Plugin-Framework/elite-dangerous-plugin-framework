@@ -48,16 +48,16 @@ pub(crate) struct PluginsState {
     plugin_states: HashMap<String, PluginState>,
     /// Contains a runtime generated hash (a secret, essentially), mapped to a plugin ID
     /// This is used by the Plugin Context in the Frontend during creation. Creating is rejected if this Token is incorrect
-    #[serde(skip_serializing)]    
+    #[serde(skip_serializing)]
     runtime_token_lookup: BiHashMap<String, String>,
     /// This is the "admin" token, if you want. It is needed to get fetch [Self::runtime_token_lookup]'s tokens, which makes it the required to spawn Plugin instances
-    /// 
+    ///
     /// The only way to get this Token is by calling the [get_root_token_once] command. As the name implies, this can be only called once. Subsequent requests are rejected.
     /// Because the main window is called before any plugins, it can acquire it first. If a Plugin somehow manages to call [get_root_token_once], that call is rejected.
-    #[serde(skip_serializing)]    
+    #[serde(skip_serializing)]
     root_token: String,
-    #[serde(skip_serializing)]    
-    root_token_requested: bool
+    #[serde(skip_serializing)]
+    root_token_requested: bool,
 }
 
 #[tauri::command]
@@ -67,14 +67,16 @@ pub(crate) async fn get_root_token_once<R: Runtime>(
     let state = app.state::<Arc<RwLock<PluginsState>>>();
 
     let mut data = state.write().await;
-    Ok(if data.root_token_requested {
-        json!({"success": false, "reason": "TOKEN_ALREADY_REQUESTED"})
-    } else {
-        data.root_token_requested = true;
-        json!({"success": true, "data": data.root_token.clone()})
-    })
-}
 
+    if data.root_token_requested {
+        #[cfg(not(debug_assertions))]
+        // During dev we might reload the window. To not cause any annoyances and having the fully restart the app, we ignore the case that 
+        // the root token was already requested.
+        return Ok(json!({"success": false, "reason": "TOKEN_ALREADY_REQUESTED"}));
+    }
+    data.root_token_requested = true;
+    Ok(json!({"success": true, "data": data.root_token.clone()}))
+}
 
 impl PluginsState {
     /// this just creates an empty hashmap. Use reconcile function to sync the states
@@ -92,9 +94,13 @@ impl PluginsState {
         self.get_cloned(plugin_id)
     }
 
-    pub(crate) fn get_runtime_token_by_root_token(&self, plugin_id: &str, root_token: &str) -> Option<String> {
+    pub(crate) fn get_runtime_token_by_root_token(
+        &self,
+        plugin_id: &str,
+        root_token: &str,
+    ) -> Option<String> {
         if self.root_token != root_token {
-            return None
+            return None;
         }
         self.runtime_token_lookup.get_by_right(plugin_id).cloned()
     }
@@ -103,32 +109,63 @@ impl PluginsState {
         self.plugin_states.get(id).cloned()
     }
 
-    pub(crate) async fn stop<R: Runtime>(&mut self, id: String, app_handle: &AppHandle<R>) -> anyhow::Result<()> {
+    pub(crate) async fn stop<R: Runtime>(
+        &mut self,
+        id: String,
+        app_handle: &AppHandle<R>,
+    ) -> anyhow::Result<()> {
         ReconcileAction::Stop { plugin_id: id }.apply(self, app_handle)
     }
 
-    pub(crate) async fn finalize_stop<R: Runtime>(&mut self, id: String, app_handle: &AppHandle<R>) -> anyhow::Result<()> {
-        ReconcileAction::SyncInPlace { plugin_id: id, patch: Box::new(|x| {
-            x.current_state = PluginCurrentState::Disabled {  }
-        }) }.apply(self, app_handle)
+    pub(crate) async fn finalize_stop<R: Runtime>(
+        &mut self,
+        id: String,
+        app_handle: &AppHandle<R>,
+    ) -> anyhow::Result<()> {
+        ReconcileAction::SyncInPlace {
+            plugin_id: id,
+            patch: Box::new(|x| x.current_state = PluginCurrentState::Disabled {}),
+        }
+        .apply(self, app_handle)
     }
 
-    pub(crate) async fn start<R: Runtime>(&mut self, id: String, app_handle: &AppHandle<R>) -> anyhow::Result<()> {
+    pub(crate) async fn start<R: Runtime>(
+        &mut self,
+        id: String,
+        app_handle: &AppHandle<R>,
+    ) -> anyhow::Result<()> {
         ReconcileAction::Start { plugin_id: id }.apply(self, app_handle)
     }
 
-    pub(crate) async fn start_failed<R: Runtime>(&mut self, id: String, reasons: Vec<String>, app_handle: &AppHandle<R>) -> anyhow::Result<()> {
-        ReconcileAction::SyncInPlace { plugin_id: id, patch: Box::new(move |x| {
-            if matches!(&x.current_state, PluginCurrentState::Starting { .. }) {
-                x.current_state = PluginCurrentState::FailedToStart { reasons: reasons.clone() }
-            }
-        })}.apply(self, app_handle)
+    pub(crate) async fn start_failed<R: Runtime>(
+        &mut self,
+        id: String,
+        reasons: Vec<String>,
+        app_handle: &AppHandle<R>,
+    ) -> anyhow::Result<()> {
+        ReconcileAction::SyncInPlace {
+            plugin_id: id,
+            patch: Box::new(move |x| {
+                if matches!(&x.current_state, PluginCurrentState::Starting { .. }) {
+                    x.current_state = PluginCurrentState::FailedToStart {
+                        reasons: reasons.clone(),
+                    }
+                }
+            }),
+        }
+        .apply(self, app_handle)
     }
 
-    pub(crate) async fn finalize_start<R: Runtime>(&mut self, id: String, app_handle: &AppHandle<R>) -> anyhow::Result<()> {
-        ReconcileAction::SyncInPlace { plugin_id: id, patch: Box::new(|x| {
-            x.current_state = PluginCurrentState::Running {  }
-        }) }.apply(self, app_handle)
+    pub(crate) async fn finalize_start<R: Runtime>(
+        &mut self,
+        id: String,
+        app_handle: &AppHandle<R>,
+    ) -> anyhow::Result<()> {
+        ReconcileAction::SyncInPlace {
+            plugin_id: id,
+            patch: Box::new(|x| x.current_state = PluginCurrentState::Running {}),
+        }
+        .apply(self, app_handle)
     }
 
     /// Runs a reconciliation against all plugins.  

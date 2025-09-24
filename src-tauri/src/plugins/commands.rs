@@ -9,7 +9,11 @@ use tracing::warn;
 
 use crate::plugins::PluginStateSource;
 
-use super::{frontend_server::HttpServerState, PluginsState};
+use super::{
+    frontend_server::HttpServerState,
+    plugin_settings::{PluginSettings, PluginsUiConfig},
+    PluginsState,
+};
 
 #[tauri::command]
 pub(crate) async fn fetch_all_plugins<R: Runtime>(
@@ -115,6 +119,15 @@ pub(crate) async fn start_plugin<R: Runtime>(
 ) -> Result<Value, String> {
     let state = app.state::<Arc<RwLock<PluginsState>>>();
     let mut data = state.write().await;
+
+    let mut settings = PluginSettings::get_by_id(&app, &plugin_id)
+        .map_err(|x| format!("{}", x))?
+        .unwrap_or_default();
+    if !settings.enabled {
+        settings.enabled = true;
+        _ = settings.commit(&app, &plugin_id)
+    }
+
     Ok(match data.start(plugin_id, &app).await {
         Ok(_) => {
             json!({"success": true})
@@ -142,6 +155,20 @@ pub(crate) async fn finalize_start_plugin<R: Runtime>(
     })
 }
 
+/// This command is invoked by the PluginManager when elements in the UI are moved around. This same command is used to just fetch the config
+#[tauri::command]
+pub(crate) async fn sync_main_layout<R: Runtime>(
+    app: tauri::AppHandle<R>,
+    layout: Option<PluginsUiConfig>,
+) -> Result<Value, String> {
+    let resp = PluginSettings::sync_ui_layout(&app, layout)
+        .map_err(|x| format!("failed to sync ui layout: {x}"))?;
+    Ok(json!({
+        "success": true,
+        "data": resp
+    }))
+}
+
 #[tauri::command]
 pub(crate) async fn start_plugin_failed<R: Runtime>(
     app: tauri::AppHandle<R>,
@@ -167,6 +194,14 @@ pub(crate) async fn stop_plugin<R: Runtime>(
 ) -> Result<Value, String> {
     let state = app.state::<Arc<RwLock<PluginsState>>>();
     let mut data = state.write().await;
+    let mut settings = PluginSettings::get_by_id(&app, &plugin_id)
+        .map_err(|x| format!("{}", x))?
+        .unwrap_or_default();
+    if settings.enabled {
+        settings.enabled = false;
+        _ = settings.commit(&app, &plugin_id)
+    }
+
     Ok(match data.stop(plugin_id, &app).await {
         Ok(_) => {
             json!({"success": true})

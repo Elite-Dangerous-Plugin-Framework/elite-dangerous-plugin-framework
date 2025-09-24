@@ -1,16 +1,12 @@
 pub(crate) mod event_watchdog;
 pub(crate) mod plugins;
-use std::{env, fs, sync::Arc};
+use std::{env, sync::Arc};
 
-use plugins::{
-    plugin_manifest::{PluginManifest, PluginManifestV1Alpha},
-    PluginState, PluginsState,
-};
-use serde_json::json;
+use plugins::PluginsState;
 use tauri::{
     menu::{MenuBuilder, MenuItem, MenuItemBuilder, SubmenuBuilder},
     tray::TrayIconBuilder,
-    AppHandle, Manager, Runtime, WebviewWindowBuilder,
+    Manager,
 };
 use tokio::sync::RwLock;
 use tracing::Instrument;
@@ -128,6 +124,7 @@ pub fn run() {
             plugins::commands::start_plugin_failed,
             plugins::commands::finalize_stop_plugin,
             plugins::commands::finalize_start_plugin,
+            plugins::commands::sync_main_layout,
             plugins::get_root_token_once,
         ])
         .run(tauri::generate_context!())
