@@ -107,11 +107,11 @@ function App() {
         (async () => {
           // Do reconciliation for Disabling
           if (pluginManagerRef.current?.loadedPluginsLookup[pluginID]) {
-            const data = pluginManagerRef.current.loadedPluginsLookup[pluginID];
-            if (data.type === "Running" && !!data.ref) {
-              data.ref.remove();
-              data.ref = undefined;
+            const newState = {
+              ...pluginManagerRef.current.loadedPluginsLookup
             }
+            delete newState[pluginID]
+            await pluginManagerRef.current.setLoadedPluginsLookup(newState)
           }
           await invoke("finalize_stop_plugin", { pluginId: pluginID });
           return;

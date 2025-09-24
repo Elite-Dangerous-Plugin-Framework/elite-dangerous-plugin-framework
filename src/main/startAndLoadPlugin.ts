@@ -133,7 +133,7 @@ export function startAndLoadPlugin(
       context: ctx,
       ref: item,
     };
-    pluginManager.loadedPluginsLookup = pluginManagerState
+    await pluginManager.setLoadedPluginsLookup(pluginManagerState)
     await invoke("finalize_start_plugin", {
       pluginId: pluginID,
     });

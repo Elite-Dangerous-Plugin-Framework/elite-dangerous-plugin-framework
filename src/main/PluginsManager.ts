@@ -4,16 +4,13 @@ import { invoke } from "@tauri-apps/api/core";
 
 export default class PluginsManager extends HTMLElement {
   #parkingLotRef: HTMLDivElement;
-  #pluginTreeRoot: HTMLDivElement;
   constructor() {
     super();
     // Construct the parking lot
     this.#parkingLotRef = document.createElement("div");
     this.#parkingLotRef.id = "edpf-parking-lot";
     this.#parkingLotRef.className = "hidden";
-    this.#pluginTreeRoot = document.createElement("div");
-    this.#pluginTreeRoot.id = "edpf-plugin-tree-root";
-    this.append(this.#pluginTreeRoot, this.#parkingLotRef);
+    this.append(this.#parkingLotRef);
     invoke("sync_main_layout").then(e => {
       console.log(e)
       const { data } = z.object({ data: PluginViewStructureZod }).parse(e)
@@ -128,10 +125,7 @@ export default class PluginsManager extends HTMLElement {
   static observedAttributes = ["data-mode"];
 
   #loadedPluginsLookup: z.infer<typeof LoadedPluginStateLookup> = {};
-  /**
-   * Maps Plugin IDs to their wrapper PluginWrapper
-   */
-  #wrapperLookup: Record<string, PluginWrapper> = {};
+
   get loadedPluginsLookup() {
     return this.#loadedPluginsLookup;
   }
@@ -139,36 +133,77 @@ export default class PluginsManager extends HTMLElement {
 
   /**
    * This uses a naive diffing approach of comparing object instances.
-   * An update MUST be a new object
+   * An update MUST be a new object.
+   * 
+   * Note that PluginsManager is the one responsible for Creating, Moving and Sunsetting Plugin Instances!
    */
-  set loadedPluginsLookup(val: z.infer<typeof LoadedPluginStateLookup>) {
-    const updatedPluginIds = Object.entries(val)
+  async setLoadedPluginsLookup(newLookup: z.infer<typeof LoadedPluginStateLookup>) {
+    const updatedPluginIds = Object.entries(newLookup)
       .filter(([k, v]) => {
         return v !== this.#loadedPluginsLookup[k];
       })
       .map(([k]) => k);
-    this.#loadedPluginsLookup = val
+    const deletedPluginIds = Object.keys(this.#loadedPluginsLookup).filter(e => !newLookup[e])
+
+
     for (const id of updatedPluginIds) {
       // check if a Wrapper exists for it already
-      if (!this.#wrapperLookup[id]) {
+      let wrapper = document.getElementById("plugin-cell-" + id)
+      if (!wrapper) {
         // The wrapper doesnt exist. This implies that the Plugin is not part of the visible 
-        // plugins and belongs into the parking lot
-        const wrapper = new PluginWrapper()
-        // todo: refactor: duplication with this.#reconcileTree
+        // plugins and belongs into the parking lot, as otherwise it would have been created 
+        // already by this.#reconcileTree
+        wrapper = new PluginWrapper()
         wrapper.dataset.type = "PluginCell"
         wrapper.dataset.manager = "pluginsmanager"
         wrapper.id = `plugin-cell-${id}`
-        this.#wrapperLookup[id] = wrapper
-        // we move it into the parking lot at first
         this.#parkingLotRef.append(wrapper)
       }
-      debugger
-      // At this point a Wrapper has been created. We move the Plugin Node over if its isnt in the right spot already
-      if (val[id].ref && val[id].ref.parentElement !== this.#wrapperLookup[id]) {
-        this.#wrapperLookup[id].append(val[id].ref)
+
+      if (!(wrapper instanceof PluginWrapper)) {
+        throw new Error("found plugin wrapper not instance of PluginWrapper")
+      }
+
+      const previousRef = this.#loadedPluginsLookup[id] ? this.#loadedPluginsLookup[id].ref : undefined
+      const newRef = newLookup[id].ref
+
+      let needAdoption = false;
+      let needDeletion = false;
+      if (newRef === previousRef) {
+        // its the same node. We dont need to destroy the node to recreate it
+      } else if (previousRef === undefined) {
+        // We are at the start of a plugin. It wasnt existing beforehand
+        needAdoption = true
+      } else if (previousRef !== undefined && newRef !== previousRef) {
+        // We are restarting a plugin
+        needAdoption = true
+        needDeletion = true
+      }
+
+
+      if (needDeletion) {
+        // todo: await shutdown grace period using ctx
+      }
+      if (needDeletion || needAdoption) {
+        // We attach the plugin to the closed shadow root here. 
+        // If undefined is passed, we just remove the existing element
+        wrapper.swapPlugin(newRef)
       }
     }
+    await Promise.all(deletedPluginIds.map(async id => {
+      // todo: delete via ctx
+      const wrapper = document.getElementById(`plugin-cell-${id}`)
+      if (!(wrapper instanceof PluginWrapper)) {
+        throw new Error("found plugin wrapper that is not instanceof PluginWrapper")
+      }
+      // we pass undefined here -> node is killed and not replaced with anything
+      wrapper.swapPlugin(undefined)
+    }))
+
+
+    this.#loadedPluginsLookup = newLookup
   }
+
 
 
   public static register() {
@@ -189,7 +224,8 @@ export default class PluginsManager extends HTMLElement {
  */
 class PluginWrapper extends HTMLElement {
   #pluginID: string = "";
-  #shadow: ShadowRoot | undefined;
+  #shadow: ShadowRoot;
+  #currentInstance: HTMLElement | undefined
 
   static observedAttributes = [
     // default, edit, edit-drop-target
@@ -207,9 +243,22 @@ class PluginWrapper extends HTMLElement {
   constructor() {
     super()
     this.#shadow = this.attachShadow({ mode: "closed" });
-    const d = document.createElement("div")
-    this.#shadow.append(d)
   }
+
+  /**
+   * this is to be called after the previous plugin instance had time to destroy itself correctly.
+   * Will swap the Plugin and destroy the existing node
+   */
+  public swapPlugin(el: HTMLElement | undefined) {
+    if (this.#currentInstance) {
+      this.#currentInstance.remove()
+    }
+    this.#currentInstance = el
+    if (el) {
+      this.#shadow.append(el)
+    }
+  }
+
 
   public static get htmlName() {
     return "edpf-plugin-wrapper"
