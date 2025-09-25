@@ -10,21 +10,10 @@ import { startAndLoadPlugin } from "./startAndLoadPlugin";
 import PluginsManager from "./PluginsManager";
 
 function App() {
-  const rootTokenRef = useRef<string>();
-  const updatePluginIdsBufferRef = useRef<Record<string, null>>({});
-  const updatePluginIdsDebouncerRef = useRef<ReturnType<
-    typeof setTimeout
-  > | null>(null);
-
   const [appWin, setAppWin] = useState<Window>();
   const [isMaximized, setIsMaximized] = useState(false);
   const [isEditMode, setIsEditMode] = useState(false);
   const pluginManagerRef = useRef<PluginsManager>();
-
-  /// Contains the current plugin state and the plugin that was just updated. If undefined, we assume initial startup
-  const [[pluginStates, updateIDs], setPluginStates] = useState<
-    [Record<string, PluginState>, string[] | undefined]
-  >([{}, undefined]);
 
   useEffect(() => {
     PluginsManager.register();
@@ -45,80 +34,8 @@ function App() {
     const win = getCurrentWindow();
     setAppWin(win);
     win.isMaximized().then((e) => setIsMaximized(e));
-    getAllPluginStates().then((e) => setPluginStates([e, undefined]));
-
-    const unlisten = listen("core/plugins/update", (ev) => {
-      console.log(ev.payload);
-      const resp = z
-        .object({ id: z.string(), pluginState: PluginStateZod })
-        .parse(ev.payload);
-      // we debouce this because otherwise we drop events in case we get many updates in quick succession (e.g. reconcile)
-      updatePluginIdsBufferRef.current[resp.id] = null; // discount hashset
-      if (updatePluginIdsDebouncerRef.current !== null) {
-        clearTimeout(updatePluginIdsDebouncerRef.current);
-      }
-      updatePluginIdsDebouncerRef.current = setTimeout(async () => {
-        const state = await getAllPluginStates();
-        updatePluginIdsDebouncerRef.current = null;
-        const updatedPluginIDs = Object.keys(updatePluginIdsBufferRef.current)
-        setPluginStates([state, updatedPluginIDs]);
-
-        updatePluginIdsBufferRef.current = {};
-      }, 100);
-    });
-
-    invoke("get_root_token_once").then((e) => {
-      const response = z
-        .object({ success: z.literal(true), data: z.string() })
-        .or(z.object({ success: z.literal(false), reason: z.string() }))
-        .parse(e);
-      if (!response.success) {
-        if (rootTokenRef.current === undefined) {
-          console.error(
-            "critital error: root token was already requested, the main App cannot acquire it. Please restart EDPF."
-          );
-          return;
-        } else {
-          console.info(
-            "root token was already requested, but we already have a reference."
-          );
-        }
-      } else {
-        rootTokenRef.current = response.data;
-        console.log("root token was inserted");
-      }
-    });
-
-    return () => {
-      unlisten.then((e) => e());
-    };
   }, []);
 
-  useEffect(() => {
-    for (const item of Object.entries(pluginStates).filter(
-      (e) => updateIDs === undefined || updateIDs.includes(e[0])
-    )) {
-      const [pluginID, pluginState] = item;
-      if ("Starting" in pluginState.current_state) {
-        // Do reconciliation for Starting
-        startAndLoadPlugin(pluginID, rootTokenRef, pluginManagerRef.current!);
-      }
-      if ("Disabling" in pluginState.current_state) {
-        (async () => {
-          // Do reconciliation for Disabling
-          if (pluginManagerRef.current?.loadedPluginsLookup[pluginID]) {
-            const newState = {
-              ...pluginManagerRef.current.loadedPluginsLookup
-            }
-            delete newState[pluginID]
-            await pluginManagerRef.current.setLoadedPluginsLookup(newState)
-          }
-          await invoke("finalize_stop_plugin", { pluginId: pluginID });
-          return;
-        })();
-      }
-    }
-  }, [pluginStates, updateIDs]);
 
   return (
     <main

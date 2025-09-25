@@ -5,7 +5,7 @@ import PluginsManager from "./PluginsManager";
 
 export function startAndLoadPlugin(
   pluginID: string,
-  rootTokenRef: React.MutableRefObject<string | undefined>,
+  rootTokenRef: string | undefined,
   pluginManager: PluginsManager
 ) {
   (async () => {
@@ -108,7 +108,7 @@ export function startAndLoadPlugin(
     document.getElementById("plugins-staging-ground")!.appendChild(item);
     const { data }: { data: string } = await invoke(
       "get_instance_id_by_plugin",
-      { pluginId: pluginID, rootToken: rootTokenRef.current }
+      { pluginId: pluginID, rootToken: rootTokenRef }
     );
     const { ctx } = await PluginContext.create(data);
 

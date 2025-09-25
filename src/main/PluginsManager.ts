@@ -1,18 +1,27 @@
 import z from "zod";
-import { LoadedPluginStateLookup } from "./startAndLoadPlugin";
+import { LoadedPluginStateLookup, startAndLoadPlugin } from "./startAndLoadPlugin";
 import { invoke } from "@tauri-apps/api/core";
+import { listen } from "@tauri-apps/api/event";
+import { PluginStateZod } from "../types/PluginState";
+import { getAllPluginStates } from "../commands/getAllPluginStates";
+import { PluginWrapper } from "./PluginWrapper";
+import { getRootToken } from "../commands/getRootToken";
+import { PluginViewStructureZod, reconcileTree } from "./reconcileTree";
+import { inferCurrentState } from "../settings/utils";
 
 export default class PluginsManager extends HTMLElement {
   #parkingLotRef: HTMLDivElement;
+  #destructorCallbacks: (() => void)[] = []
+  #pluginState: Record<string, z.infer<typeof PluginStateZod>> = {}
   constructor() {
     super();
     // Construct the parking lot
     this.#parkingLotRef = document.createElement("div");
     this.#parkingLotRef.id = "edpf-parking-lot";
     this.#parkingLotRef.className = "hidden";
+    this.className = "flex flex-1 bg-neutral-300 w-full"
     this.append(this.#parkingLotRef);
     invoke("sync_main_layout").then(e => {
-      console.log(e)
       const { data } = z.object({ data: PluginViewStructureZod }).parse(e)
       data.root.children.push({
         type: "VerticalLayout", identifier: "548654675498654768945897", "meta": {
@@ -24,103 +33,86 @@ export default class PluginsManager extends HTMLElement {
         {
           type: "PluginCell", meta: {}, plugin_id: "test-3"
         })
-      this.#reconcileTree(data)
+      reconcileTree(data, this, this.#parkingLotRef)
+    })
+  }
+
+
+  #updatePluginIdsBufferRef: Record<string, null> = {}
+  #rootToken: string | undefined
+  #updatePluginIdsDebouncerRef: ReturnType<typeof setTimeout> | null = null
+  /**
+   * Invoked by Browser when this node is attached (=created). We use this to create any relevant listeners
+   */
+  connectedCallback() {
+    const unlisten = listen("core/plugins/update", (ev) => {
+      console.log(ev.payload);
+      const resp = z
+        .object({ id: z.string(), pluginState: PluginStateZod })
+        .parse(ev.payload);
+      // we debouce this because otherwise we drop events in case we get many updates in quick succession (e.g. reconcile)
+      this.#updatePluginIdsBufferRef[resp.id] = null; // discount hashset
+      if (this.#updatePluginIdsDebouncerRef !== null) {
+        clearTimeout(this.#updatePluginIdsDebouncerRef);
+      }
+      this.#updatePluginIdsDebouncerRef = setTimeout(async () => {
+        const state = await getAllPluginStates();
+        this.#updatePluginIdsDebouncerRef = null;
+        const updatedPluginIDs = Object.keys(this.#updatePluginIdsBufferRef)
+        this.#pluginState = state
+        this.#updatePluginIdsBufferRef = {};
+        this.#updatePluginsByIds(updatedPluginIDs)
+      }, 100);
+    })
+    unlisten.then(e => this.#destructorCallbacks.push(e))
+    getRootToken().then(async token => {
+      this.#rootToken = token
+      this.#pluginState = await getAllPluginStates()
+      this.#updatePluginsByIds(undefined)
     })
   }
   /**
-   * This makes sure all nodes exist (both containers and Plugin cells)
+   * Invoked by Browser when this node is destroyed. Does cleanup
    */
-  #reconcileTree(data: z.infer<typeof PluginViewStructureZod>) {
-    /**
-     * We store the IDs of all elements we expect to be in the tree. Then we do a querySelectorAll() based on data-manager=pluginsmanager
-     * to get anything that is managed by us.
-     * We then prune any containers and move any plugin wrappers to the parking lot
-     */
-    const legalIds: Record<string, any> = {}
-
-    /**
-     * This is a recursive function that is called for all children. 
-     * If the child is NOT a container, it returns without further recursion.
-     */
-    const handleNode = (node: z.infer<typeof AnyNodeZod>, expectedParent: HTMLElement, indexUnderParent: number) => {
-      let identifier
-      if (node.type === "PluginCell") {
-        identifier = `plugin-cell-${node.plugin_id}`
-      }
-      else {
-        identifier = node.identifier
-      }
-      legalIds[identifier] = {}
-      // we get the node. by convention the id of the node is always just the identifier.
-      // an exception to this is the root node, which is always edpf-plugin-tree-root
-      let existingOrCreatedNode = document.getElementById(identifier)
-      if (!existingOrCreatedNode) {
-        existingOrCreatedNode = document.createElement(node.type === "PluginCell" ? PluginWrapper.htmlName : "div")
-        existingOrCreatedNode.id = identifier
-      }
-      existingOrCreatedNode.dataset.type = node.type
-      existingOrCreatedNode.dataset.manager = "pluginsmanager"
-      function setOrDelete(key: string, val: string | null | undefined) {
-        if (val) {
-          existingOrCreatedNode!.dataset[key] = val
-        } else {
-          delete existingOrCreatedNode!.dataset[key]
-        }
-      }
-      setOrDelete("minW", node.meta.min_width)
-      setOrDelete("maxW", node.meta.max_width)
-      setOrDelete("minH", node.meta.min_height)
-      setOrDelete("maxH", node.meta.max_height)
-      if (existingOrCreatedNode.parentElement !== expectedParent) {
-        expectedParent.append(existingOrCreatedNode)
-      }
-      // at this point we are guaranteed to be at the correct parent node
-      // now we just have to get the ordering right
-      const childrenOfParent = [...expectedParent.childNodes]
-      const currentIdx = childrenOfParent.findIndex(e => e === existingOrCreatedNode)
-      if (currentIdx !== indexUnderParent) {
-        // we are at the wrong index and need to move
-        if (indexUnderParent < childrenOfParent.length) {
-          expectedParent.insertBefore(existingOrCreatedNode, childrenOfParent[indexUnderParent])
-        }
-        // now we are in the correct order. Because we move left-to-right, there is no index shiftings afterwards
-      }
-
-      if (node.type !== "PluginCell") {
-        node.children.forEach((c, idx) => handleNode(c, existingOrCreatedNode, idx))
-      }
-    };
-    // by convention the root is always called like that
-    data.root.identifier = "edpf-plugin-tree-root"
-    handleNode(data.root, this, 0)
-
-    const allManagedNodes = document.querySelectorAll('[data-manager="pluginsmanager"]')
-    const nodesToDelete: HTMLElement[] = []
-    console.log("all nodes:", allManagedNodes)
-    for (const node of allManagedNodes) {
-      if (legalIds[node.id]) {
-        // This is an allowed node. It shall stay
-        continue
-      }
-      if (!(node instanceof HTMLElement)) {
-        throw new Error("should never happen. Node is not an HTML Element")
-      }
-      // This node has to go. We cannot delete nodes immediately as 
-      // they MAY contain children that we care about. 
-      // So we enqueue them up into nodesToDelete if they are a container node.
-      // if its a plugin we just move it to the parking lot
-      if (node.dataset.type === "PluginCell" && node.parentElement !== this.#parkingLotRef) {
-        this.#parkingLotRef.append(node) // node moved
-      } else {
-        nodesToDelete.push(node)
-      }
-    }
-    for (const node of nodesToDelete) {
-      node.remove()
-    }
+  disconnectedCallback() {
+    this.#destructorCallbacks.forEach(e => e())
   }
 
-
+  #updatePluginsByIds(updatedPluginIds: string[] | undefined) {
+    for (const item of Object.entries(this.#pluginState).filter(
+      (e) => updatedPluginIds === undefined || updatedPluginIds.includes(e[0])
+    )) {
+      const [pluginID, pluginState] = item;
+      const currentState = inferCurrentState(pluginState.current_state)
+      const maybePluginWrapper = document.getElementById("plugin-cell-" + pluginID)
+      if (maybePluginWrapper && maybePluginWrapper instanceof PluginWrapper) {
+        maybePluginWrapper.notifyAboutNewPluginState(pluginState)
+      }
+      if (currentState === "Starting" || (currentState === "Running" && !this.#loadedPluginsLookup[pluginID])) {
+        // Do reconciliation for Starting (or adopting after a refresh of the UI)
+        if (this.#rootToken) {
+          startAndLoadPlugin(pluginID, this.#rootToken, this);
+        }
+        else {
+          console.error("couldnt start the plugin because we do not have a root token")
+        }
+      }
+      if (currentState === "Disabling") {
+        (async () => {
+          // Do reconciliation for Disabling
+          if (this.loadedPluginsLookup[pluginID]) {
+            const newState = {
+              ...this.loadedPluginsLookup
+            }
+            delete newState[pluginID]
+            await this.setLoadedPluginsLookup(newState)
+          }
+          await invoke("finalize_stop_plugin", { pluginId: pluginID });
+          return;
+        })();
+      }
+    }
+  }
 
   static observedAttributes = ["data-mode"];
 
@@ -199,74 +191,17 @@ export default class PluginsManager extends HTMLElement {
       // we pass undefined here -> node is killed and not replaced with anything
       wrapper.swapPlugin(undefined)
     }))
-
-
     this.#loadedPluginsLookup = newLookup
   }
 
 
-
-  public static register() {
-    if (!window.customElements.get("edpf-plugins-manager")) {
-      window.customElements.define("edpf-plugins-manager", PluginsManager);
-      PluginWrapper.register();
-    }
-  }
-
-  attributeChangedCallback(name: string, oldVal: string, newVal: string) {
-    console.log(`${name}: ${oldVal}→${newVal}`);
-  }
-}
-
-/**
- * This Custom Element encapsulates a Plugin. It is managed by EDPF. It can be used to define Size Limits for this Plugin.
- * When a plugin is not loaded / errored, this Component takes the responsibility to render that Info
- */
-class PluginWrapper extends HTMLElement {
-  #pluginID: string = "";
-  #shadow: ShadowRoot;
-  #currentInstance: HTMLElement | undefined
-
-  static observedAttributes = [
-    // default, edit, edit-drop-target
-    "data-mode",
-    // see PluginCurrentStateKeys type
-    "data-plugin-current-state",
-    // size bounds are passed via data prop
-    "data-min-w",
-    "data-max-w",
-    "data-min-h",
-    "data-max-h",
-    "id"
-  ];
-
-  constructor() {
-    super()
-    this.#shadow = this.attachShadow({ mode: "closed" });
-  }
-
-  /**
-   * this is to be called after the previous plugin instance had time to destroy itself correctly.
-   * Will swap the Plugin and destroy the existing node
-   */
-  public swapPlugin(el: HTMLElement | undefined) {
-    if (this.#currentInstance) {
-      this.#currentInstance.remove()
-    }
-    this.#currentInstance = el
-    if (el) {
-      this.#shadow.append(el)
-    }
-  }
-
-
   public static get htmlName() {
-    return "edpf-plugin-wrapper"
+    return "edpf-plugins-manager"
   }
-
   public static register() {
-    if (!window.customElements.get(PluginWrapper.htmlName)) {
-      window.customElements.define(PluginWrapper.htmlName, PluginWrapper);
+    if (!window.customElements.get(PluginsManager.htmlName)) {
+      window.customElements.define(PluginsManager.htmlName, PluginsManager);
+      PluginWrapper.register();
     }
   }
 
@@ -274,48 +209,15 @@ class PluginWrapper extends HTMLElement {
     if (oldVal === newVal) {
       return
     }
-    if (name === "id") {
-      if (newVal.startsWith("plugin-cell-")) {
-        // the wrapper is getting initialized
-        // we can get the Plugin ID from the ID
-        this.#pluginID = newVal.replace("plugin-cell-", "")
-      }
+    if (name === "data-mode") {
+      // Notify all containers and plugin-wrappers about being in Edit mode
+      document.querySelectorAll('[data-manager="pluginsmanager"]').forEach(e => {
+        if (e instanceof HTMLElement) {
+          e.dataset["mode"] = newVal
+        }
+      })
     }
-    console.log(`${name}: ${oldVal}→${newVal}`);
-  }
-
-  public get pluginID(): string {
-    return this.#pluginID;
   }
 }
 
-const PluginViewStructureZodMeta = z.object({
-  min_height: z.string().nullable().optional(),
-  max_height: z.string().nullable().optional(),
-  min_width: z.string().nullable().optional(),
-  max_width: z.string().nullable().optional(),
-})
-const PluginCellNodeZod = z.object({
-  type: z.literal("PluginCell"),
-  plugin_id: z.string(),
-  meta: PluginViewStructureZodMeta
-})
-
-const VerticalNodeZod = z.object({
-  type: z.literal("VerticalLayout"),
-  meta: PluginViewStructureZodMeta,
-  identifier: z.string(),
-  get children() {
-    return z.array(AnyNodeZod)
-  }
-});
-
-const AnyNodeZod = z.union([
-  VerticalNodeZod, PluginCellNodeZod
-])
-
-
-const PluginViewStructureZod = z.object({
-  root: VerticalNodeZod
-});
 
