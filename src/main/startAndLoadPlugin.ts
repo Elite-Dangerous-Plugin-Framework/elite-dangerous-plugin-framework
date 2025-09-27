@@ -110,7 +110,7 @@ export function startAndLoadPlugin(
       "get_instance_id_by_plugin",
       { pluginId: pluginID, rootToken: rootTokenRef }
     );
-    const { ctx } = await PluginContext.create(data);
+    const { ctx, notifyDestructor } = await PluginContext.create(data);
 
     try {
       item.initPlugin(ctx);
@@ -122,33 +122,17 @@ export function startAndLoadPlugin(
       return;
     }
 
-    const pluginManagerState = {
-      ...pluginManager.loadedPluginsLookup
-    }
 
-    pluginManagerState[pluginID] = {
+    await pluginManager.setLoadedPluginsLookup({
       type: "Running",
-      customElementName: customElementID,
-      capabilities: {},
       context: ctx,
       ref: item,
-    };
-    await pluginManager.setLoadedPluginsLookup(pluginManagerState)
+      customElementName: customElementID,
+      contextDestruction: notifyDestructor
+    }, pluginID)
     await invoke("finalize_start_plugin", {
       pluginId: pluginID,
     });
   })();
 }
 
-export const LoadedPluginStateLookup = z.record(
-  z.string(),
-  z.union([
-    z.object({
-      type: z.literal("Running"),
-      ref: z.instanceof(HTMLElement).optional(),
-      customElementName: z.string(),
-      capabilities: z.object({}),
-      context: z.instanceof(PluginContext),
-    }),
-  ])
-);

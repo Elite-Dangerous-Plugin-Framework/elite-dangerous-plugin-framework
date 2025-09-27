@@ -38,6 +38,9 @@ pub fn run() {
         }))
         .plugin(tauri_plugin_window_state::Builder::new().build())
         .setup(|app| {
+            #[cfg(debug_assertions)]
+            app.get_webview_window("main").unwrap().open_devtools();
+
             app.manage(Arc::new(RwLock::new(PluginsState::new())));
             // Spawns the HTTP Server
             let handle = app.app_handle().clone();

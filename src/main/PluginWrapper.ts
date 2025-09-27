@@ -1,4 +1,4 @@
-import { inferCurrentState, PluginStateUIData } from "../settings/utils";
+import { PluginStateUIData } from "../settings/utils";
 import { PluginState } from "../types/PluginState";
 
 /**
@@ -61,13 +61,13 @@ export class PluginWrapper extends HTMLElement {
     this.#rerender()
   }
   #rerender() {
-    const state = this.#pluginState ? inferCurrentState(this.#pluginState.current_state) : "Missing"
+    const state = this.#pluginState ? this.#pluginState.current_state.type : "Missing"
     const isUnloadedState = state !== "Running"
     const isEditMode = this.dataset.mode === "edit"
     this.className = `p-2 border rounded-sm ${isUnloadedState ? "" : ""} `
     let colour = "#a0a0a0"
     if (state in PluginStateUIData) {
-      colour = PluginStateUIData[state as ReturnType<typeof inferCurrentState>].colour
+      colour = PluginStateUIData[state].colour
     }
 
     if (!isEditMode && !this.#currentInstance) {

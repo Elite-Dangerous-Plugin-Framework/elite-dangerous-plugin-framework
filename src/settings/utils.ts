@@ -13,30 +13,14 @@ export function countPluginStates(
   };
 
   for (const plugin of plugins) {
-    response[inferCurrentState(plugin.current_state)]++;
+    response[plugin.current_state.type]++;
   }
   return response;
 }
 
-export function inferCurrentState(
-  current: PluginState["current_state"]
-): PluginCurrentStateKeys {
-  for (const item of [
-    "Disabled",
-    "Starting",
-    "FailedToStart",
-    "Running",
-    "Disabling",
-  ] as const) {
-    if (item in current) {
-      return item;
-    }
-  }
-  throw new Error("state could not be mapped");
-}
 
 export const PluginStateUIData: Record<
-  PluginCurrentStateKeys,
+  PluginCurrentStateKeys | "Missing",
   { colour: string; pulsating: boolean }
 > = {
   Starting: {
@@ -57,6 +41,10 @@ export const PluginStateUIData: Record<
   },
   Running: {
     colour: "#39C655",
+    pulsating: false,
+  },
+  Missing: {
+    colour: "#5B5B5B",
     pulsating: false,
   },
 };

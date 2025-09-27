@@ -325,6 +325,7 @@ pub(crate) struct PluginState {
 }
 
 #[derive(Debug, Serialize, Clone, PartialEq, Eq, JsonSchema)]
+#[serde(tag = "type")]
 pub(crate) enum PluginCurrentState {
     Disabled {},
     Starting { metadata: Vec<String> },

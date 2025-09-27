@@ -41,9 +41,8 @@ function SettingsStateVisualizer({
               borderColor: PluginStateUIData[e].colour,
               color: PluginStateUIData[e].colour,
             }}
-            className={`p-1 text-xs inline-flex flex-row gap-1 justify-baseline border-1 rounded-lg ${
-              PluginStateUIData[e].pulsating ? "animate-pulse" : ""
-            } `}
+            className={`p-1 text-xs inline-flex flex-row gap-1 justify-baseline border-1 rounded-lg ${PluginStateUIData[e].pulsating ? "animate-pulse" : ""
+              } `}
             key={e}
           >
             <span>{e}:</span>

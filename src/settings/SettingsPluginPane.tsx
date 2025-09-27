@@ -8,12 +8,8 @@ import { PluginState } from "../types/PluginState";
 import { invoke } from "@tauri-apps/api/core";
 import z from "zod";
 import React from "react";
-import {
-  PluginCurrentState,
-  PluginCurrentStateKeys,
-} from "../types/PluginCurrentState";
 import { StatusIndicator } from "./Settings";
-import { inferCurrentState } from "./utils";
+
 
 export interface SettingsPluginPaneProps {
   plugin: PluginState & { id: string };
@@ -127,7 +123,7 @@ export function SettingsPluginPane({ plugin }: SettingsPluginPaneProps) {
     })();
   }, [plugin.id]);
 
-  const currentState = inferCurrentState(plugin.current_state);
+  const currentStateType = plugin.current_state.type
 
   return (
     <div className="flex flex-col p-2">
@@ -151,7 +147,7 @@ export function SettingsPluginPane({ plugin }: SettingsPluginPaneProps) {
           </h2>
         </div>
         <section id="actions" className="inline-flex rounded-md gap-1">
-          {currentState == "FailedToStart" && (
+          {currentStateType == "FailedToStart" && (
             <button
               id="plugin-abort-start"
               className="rounded-lg p-2 bg-white/10 hover:bg-white/20 cursor-pointer "
@@ -169,23 +165,23 @@ export function SettingsPluginPane({ plugin }: SettingsPluginPaneProps) {
           <button
             id="plugin-start-stop"
             disabled={
-              currentState === "Starting" || currentState === "Disabling"
+              currentStateType === "Starting" || currentStateType === "Disabling"
             }
-            className={`rounded-lg p-2 bg-white/10 hover:bg-white/20 ${currentState === "Starting" || currentState === "Disabling"
+            className={`rounded-lg p-2 bg-white/10 hover:bg-white/20 ${currentStateType === "Starting" || currentStateType === "Disabling"
               ? "cursor-progress animate-pulse"
               : "cursor-pointer"
               } `}
           >
             <PluginStartStopButton
               className={`h-6 w-6 `}
-              currentState={currentState}
+              currentState={currentStateType}
               onClick={() => {
                 if (
-                  currentState === "Disabled" ||
-                  currentState === "FailedToStart"
+                  currentStateType === "Disabled" ||
+                  currentStateType === "FailedToStart"
                 ) {
                   invoke("start_plugin", { pluginId: plugin.id });
-                } else if (currentState === "Running") {
+                } else if (currentStateType === "Running") {
                   invoke("stop_plugin", { pluginId: plugin.id });
                 }
               }}
@@ -218,7 +214,7 @@ export function SettingsPluginPane({ plugin }: SettingsPluginPaneProps) {
 
       <hr className=" text-neutral-600 my-2" />
       {
-        currentState === "FailedToStart" && <div className="text-red-400 p-4">
+        currentStateType === "FailedToStart" && <div className="text-red-400 p-4">
           <h2>Failed to start plugin…</h2>
           {
             (((plugin.current_state as any).FailedToStart).reasons as string[]).map(e => <p key={e}>{e}</p>)

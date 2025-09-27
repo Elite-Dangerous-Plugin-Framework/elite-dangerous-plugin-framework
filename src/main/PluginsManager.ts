@@ -1,5 +1,5 @@
 import z from "zod";
-import { LoadedPluginStateLookup, startAndLoadPlugin } from "./startAndLoadPlugin";
+import { startAndLoadPlugin } from "./startAndLoadPlugin";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { PluginStateZod } from "../types/PluginState";
@@ -7,12 +7,29 @@ import { getAllPluginStates } from "../commands/getAllPluginStates";
 import { PluginWrapper } from "./PluginWrapper";
 import { getRootToken } from "../commands/getRootToken";
 import { PluginViewStructureZod, reconcileTree } from "./reconcileTree";
-import { inferCurrentState } from "../settings/utils";
+import { PluginContext } from "./PluginContext";
+
+
+const CurrentUiStateZod = z.union([
+  z.object({
+    type: z.literal("Running"),
+    ref: z.instanceof(HTMLElement),
+    contextDestruction: z.function(),
+    customElementName: z.string(),
+    context: z.instanceof(PluginContext),
+  }),
+  z.object({
+    type: z.literal("Missing")
+  })
+])
+const PluginStateContainingCurrentStateZod = PluginStateZod.and(z.object({
+  currentUiState: CurrentUiStateZod
+}))
 
 export default class PluginsManager extends HTMLElement {
   #parkingLotRef: HTMLDivElement;
   #destructorCallbacks: (() => void)[] = []
-  #pluginState: Record<string, z.infer<typeof PluginStateZod>> = {}
+  #pluginState: Record<string, z.infer<typeof PluginStateContainingCurrentStateZod>> = {}
   constructor() {
     super();
     // Construct the parking lot
@@ -41,25 +58,41 @@ export default class PluginsManager extends HTMLElement {
   #updatePluginIdsBufferRef: Record<string, null> = {}
   #rootToken: string | undefined
   #updatePluginIdsDebouncerRef: ReturnType<typeof setTimeout> | null = null
+  #lastPluginUpdate: Record<string, [Date, z.infer<typeof PluginStateZod>]> = {}
   /**
    * Invoked by Browser when this node is attached (=created). We use this to create any relevant listeners
    */
   connectedCallback() {
     const unlisten = listen("core/plugins/update", (ev) => {
-      console.log(ev.payload);
+      console.log("core/plugins/update", ev.payload);
       const resp = z
         .object({ id: z.string(), pluginState: PluginStateZod })
         .parse(ev.payload);
+      const lastState = this.#lastPluginUpdate[resp.id]
+      const now = new Date()
+      if (lastState) {
+        const deltaMillis = Number(now) - Number(lastState[0])
+        if (deltaMillis < 500) {
+          // 500ms - if the state is identical, we decounce
+
+          if ((lastState[1].current_state.type) === (resp.pluginState.current_state.type) && lastState[1].frontend_hash === resp.pluginState.frontend_hash) {
+            // debounce time
+            console.error("found a deadlock loop. Fix this", { receivedState: resp.pluginState, previousState: lastState[1], deltaMillis })
+            return
+          }
+          this.#lastPluginUpdate[resp.id] = [now, resp.pluginState]
+        }
+      } else {
+        this.#lastPluginUpdate[resp.id] = [now, resp.pluginState]
+      }
       // we debouce this because otherwise we drop events in case we get many updates in quick succession (e.g. reconcile)
       this.#updatePluginIdsBufferRef[resp.id] = null; // discount hashset
       if (this.#updatePluginIdsDebouncerRef !== null) {
         clearTimeout(this.#updatePluginIdsDebouncerRef);
       }
       this.#updatePluginIdsDebouncerRef = setTimeout(async () => {
-        const state = await getAllPluginStates();
         this.#updatePluginIdsDebouncerRef = null;
         const updatedPluginIDs = Object.keys(this.#updatePluginIdsBufferRef)
-        this.#pluginState = state
         this.#updatePluginIdsBufferRef = {};
         this.#updatePluginsByIds(updatedPluginIDs)
       }, 100);
@@ -67,7 +100,7 @@ export default class PluginsManager extends HTMLElement {
     unlisten.then(e => this.#destructorCallbacks.push(e))
     getRootToken().then(async token => {
       this.#rootToken = token
-      this.#pluginState = await getAllPluginStates()
+      this.#pluginState = Object.fromEntries(Object.entries(await getAllPluginStates()).map(([k, v]) => [k, { ...v, currentUiState: { type: "Missing" } }]))
       this.#updatePluginsByIds(undefined)
     })
   }
@@ -83,12 +116,12 @@ export default class PluginsManager extends HTMLElement {
       (e) => updatedPluginIds === undefined || updatedPluginIds.includes(e[0])
     )) {
       const [pluginID, pluginState] = item;
-      const currentState = inferCurrentState(pluginState.current_state)
+      const currentState = pluginState.current_state.type
       const maybePluginWrapper = document.getElementById("plugin-cell-" + pluginID)
       if (maybePluginWrapper && maybePluginWrapper instanceof PluginWrapper) {
         maybePluginWrapper.notifyAboutNewPluginState(pluginState)
       }
-      if (currentState === "Starting" || (currentState === "Running" && !this.#loadedPluginsLookup[pluginID])) {
+      if (currentState === "Starting" || (currentState === "Running" && pluginState.currentUiState.type === "Missing")) {
         // Do reconciliation for Starting (or adopting after a refresh of the UI)
         if (this.#rootToken) {
           startAndLoadPlugin(pluginID, this.#rootToken, this);
@@ -100,13 +133,7 @@ export default class PluginsManager extends HTMLElement {
       if (currentState === "Disabling") {
         (async () => {
           // Do reconciliation for Disabling
-          if (this.loadedPluginsLookup[pluginID]) {
-            const newState = {
-              ...this.loadedPluginsLookup
-            }
-            delete newState[pluginID]
-            await this.setLoadedPluginsLookup(newState)
-          }
+          await this.setLoadedPluginsLookup({ type: "Missing" }, pluginID)
           await invoke("finalize_stop_plugin", { pluginId: pluginID });
           return;
         })();
@@ -116,12 +143,6 @@ export default class PluginsManager extends HTMLElement {
 
   static observedAttributes = ["data-mode"];
 
-  #loadedPluginsLookup: z.infer<typeof LoadedPluginStateLookup> = {};
-
-  get loadedPluginsLookup() {
-    return this.#loadedPluginsLookup;
-  }
-
 
   /**
    * This uses a naive diffing approach of comparing object instances.
@@ -129,69 +150,57 @@ export default class PluginsManager extends HTMLElement {
    * 
    * Note that PluginsManager is the one responsible for Creating, Moving and Sunsetting Plugin Instances!
    */
-  async setLoadedPluginsLookup(newLookup: z.infer<typeof LoadedPluginStateLookup>) {
-    const updatedPluginIds = Object.entries(newLookup)
-      .filter(([k, v]) => {
-        return v !== this.#loadedPluginsLookup[k];
-      })
-      .map(([k]) => k);
-    const deletedPluginIds = Object.keys(this.#loadedPluginsLookup).filter(e => !newLookup[e])
-
-
-    for (const id of updatedPluginIds) {
-      // check if a Wrapper exists for it already
-      let wrapper = document.getElementById("plugin-cell-" + id)
-      if (!wrapper) {
-        // The wrapper doesnt exist. This implies that the Plugin is not part of the visible 
-        // plugins and belongs into the parking lot, as otherwise it would have been created 
-        // already by this.#reconcileTree
-        wrapper = new PluginWrapper()
-        wrapper.dataset.type = "PluginCell"
-        wrapper.dataset.manager = "pluginsmanager"
-        wrapper.id = `plugin-cell-${id}`
-        this.#parkingLotRef.append(wrapper)
-      }
-
-      if (!(wrapper instanceof PluginWrapper)) {
-        throw new Error("found plugin wrapper not instance of PluginWrapper")
-      }
-
-      const previousRef = this.#loadedPluginsLookup[id] ? this.#loadedPluginsLookup[id].ref : undefined
-      const newRef = newLookup[id].ref
-
-      let needAdoption = false;
-      let needDeletion = false;
-      if (newRef === previousRef) {
-        // its the same node. We dont need to destroy the node to recreate it
-      } else if (previousRef === undefined) {
-        // We are at the start of a plugin. It wasnt existing beforehand
-        needAdoption = true
-      } else if (previousRef !== undefined && newRef !== previousRef) {
-        // We are restarting a plugin
-        needAdoption = true
-        needDeletion = true
-      }
-
-
-      if (needDeletion) {
-        // todo: await shutdown grace period using ctx
-      }
-      if (needDeletion || needAdoption) {
-        // We attach the plugin to the closed shadow root here. 
-        // If undefined is passed, we just remove the existing element
-        wrapper.swapPlugin(newRef)
-      }
+  async setLoadedPluginsLookup(newState: z.infer<typeof CurrentUiStateZod>, pluginId: string) {
+    if (newState.type === "Missing") {
+      debugger
     }
-    await Promise.all(deletedPluginIds.map(async id => {
-      // todo: delete via ctx
-      const wrapper = document.getElementById(`plugin-cell-${id}`)
-      if (!(wrapper instanceof PluginWrapper)) {
-        throw new Error("found plugin wrapper that is not instanceof PluginWrapper")
-      }
-      // we pass undefined here -> node is killed and not replaced with anything
-      wrapper.swapPlugin(undefined)
-    }))
-    this.#loadedPluginsLookup = newLookup
+
+    // check if a Wrapper exists for it already
+    let wrapper = document.getElementById("plugin-cell-" + pluginId)
+    if (!wrapper) {
+      // The wrapper doesnt exist. This implies that the Plugin is not part of the visible 
+      // plugins and belongs into the parking lot, as otherwise it would have been created 
+      // already by this.#reconcileTree
+      wrapper = new PluginWrapper()
+      wrapper.dataset.type = "PluginCell"
+      wrapper.dataset.manager = "pluginsmanager"
+      wrapper.id = `plugin-cell-${pluginId}`
+      this.#parkingLotRef.append(wrapper)
+    }
+
+
+    if (!(wrapper instanceof PluginWrapper)) {
+      throw new Error("found plugin wrapper not instance of PluginWrapper")
+    }
+
+    const previousRef = this.#pluginState[pluginId] && this.#pluginState[pluginId].currentUiState.type === "Running" ? this.#pluginState[pluginId].currentUiState.ref : undefined
+    const newRef = newState.type === "Running" ? newState.ref : undefined
+
+    let needAdoption = false;
+    let needDeletion = false;
+    if (newRef === previousRef) {
+      // its the same node. We dont need to destroy the node to recreate it
+    } else if (previousRef === undefined && newRef !== undefined) {
+      // We are at the start of a plugin. It wasnt existing beforehand
+      needAdoption = true
+    } else if (previousRef !== undefined && newRef !== previousRef) {
+      // We are restarting a plugin
+      needAdoption = true
+      needDeletion = true
+    } else if (newRef === undefined && previousRef !== undefined) {
+      needDeletion = true
+    }
+
+
+    if (needDeletion) {
+      // todo: await shutdown grace period using ctx
+    }
+    if (needDeletion || needAdoption) {
+      // We attach the plugin to the closed shadow root here. 
+      // If undefined is passed, we just remove the existing element
+      wrapper.swapPlugin(newRef)
+    }
+    this.#pluginState[pluginId].currentUiState = newState
   }
 
 

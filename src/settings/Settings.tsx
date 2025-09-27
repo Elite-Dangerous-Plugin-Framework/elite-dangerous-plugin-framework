@@ -8,7 +8,6 @@ import { getAllPluginStates } from "../commands/getAllPluginStates";
 import { PluginCurrentStateKeys } from "../types/PluginCurrentState";
 import {
   countPluginStates,
-  inferCurrentState,
   PluginStateUIData,
 } from "./utils";
 import { ZondiconsFolder } from "../icons/pluginType";
@@ -131,21 +130,20 @@ function SettingsSidebarPlugin({
   }
 
   // Reduce the stateful enums down to stateless enums
-  const currentState = inferCurrentState(plugin.current_state);
+  const currentStateType = plugin.current_state.type
 
   return (
     <button
       onClick={() => onPluginSelected(plugin.id)}
       style={{
         backgroundColor: selected
-          ? PluginStateUIData[currentState].colour + "40"
+          ? PluginStateUIData[currentStateType].colour + "40"
           : "unset",
       }}
-      className={`inline-flex items-center gap-1 flex-row w-full p-2 text-xs cursor-pointer hover:bg-white/10 ${
-        selected ? " underline" : ""
-      }`}
+      className={`inline-flex items-center gap-1 flex-row w-full p-2 text-xs cursor-pointer hover:bg-white/10 ${selected ? " underline" : ""
+        }`}
     >
-      <StatusIndicator state={currentState} />
+      <StatusIndicator state={currentStateType} />
       <p className=" inline-flex justify-baseline items-center gap-1">{name}</p>
     </button>
   );
