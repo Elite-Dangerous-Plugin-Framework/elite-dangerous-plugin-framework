@@ -1,12 +1,12 @@
 import { invoke } from "@tauri-apps/api/core";
 import z from "zod";
 import { PluginContext } from "./PluginContext";
-import PluginsManager from "./PluginsManager";
+import { CurrentUiStateZod } from "./PluginsManager";
 
 export function startAndLoadPlugin(
   pluginID: string,
   rootTokenRef: string | undefined,
-  pluginManager: PluginsManager
+  newStateCallback: (newState: z.infer<typeof CurrentUiStateZod>) => Promise<void>
 ) {
   (async () => {
     const result = z
@@ -122,14 +122,13 @@ export function startAndLoadPlugin(
       return;
     }
 
-
-    await pluginManager.setLoadedPluginsLookup({
+    await newStateCallback({
       type: "Running",
       context: ctx,
       ref: item,
       customElementName: customElementID,
       contextDestruction: notifyDestructor
-    }, pluginID)
+    })
     await invoke("finalize_start_plugin", {
       pluginId: pluginID,
     });

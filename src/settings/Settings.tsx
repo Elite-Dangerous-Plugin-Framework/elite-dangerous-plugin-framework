@@ -101,7 +101,7 @@ export default function Settings() {
 function SettingsMain({
   plugin,
 }: {
-  plugin: (PluginState & { id: string }) | undefined;
+  plugin: PluginState | undefined;
 }) {
   if (!plugin) {
     return (
@@ -120,7 +120,7 @@ function SettingsSidebarPlugin({
   selected,
   onPluginSelected,
 }: {
-  plugin: PluginState & { id: string };
+  plugin: PluginState;
   onPluginSelected: (id: string) => void;
   selected: boolean;
 }) {
@@ -150,6 +150,7 @@ function SettingsSidebarPlugin({
 }
 
 export function StatusIndicator({ state }: { state: PluginCurrentStateKeys }) {
+  console.log(state)
   return (
     <span title={state} className="relative flex size-3">
       {PluginStateUIData[state].pulsating && (

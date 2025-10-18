@@ -12,7 +12,7 @@ import { StatusIndicator } from "./Settings";
 
 
 export interface SettingsPluginPaneProps {
-  plugin: PluginState & { id: string };
+  plugin: PluginState;
 }
 
 function getName(plugin: PluginState) {
@@ -124,7 +124,6 @@ export function SettingsPluginPane({ plugin }: SettingsPluginPaneProps) {
   }, [plugin.id]);
 
   const currentStateType = plugin.current_state.type
-
   return (
     <div className="flex flex-col p-2">
       <section
@@ -141,7 +140,7 @@ export function SettingsPluginPane({ plugin }: SettingsPluginPaneProps) {
           </span>
           <h2 className=" inline-flex gap-2 items-baseline">
             <StatusIndicator
-              state={Object.keys(plugin.current_state)[0] as any}
+              state={plugin.current_state.type}
             />
             <span title={plugin.id}>{getName(plugin)}</span> <span></span>
           </h2>

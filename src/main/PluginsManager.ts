@@ -10,7 +10,7 @@ import { PluginViewStructureZod, reconcileTree } from "./reconcileTree";
 import { PluginContext } from "./PluginContext";
 
 
-const CurrentUiStateZod = z.union([
+export const CurrentUiStateZod = z.union([
   z.object({
     type: z.literal("Running"),
     ref: z.instanceof(HTMLElement),
@@ -52,18 +52,21 @@ export default class PluginsManager extends HTMLElement {
         })
       reconcileTree(data, this, this.#parkingLotRef)
     })
+    window.__debug_pluginsManager = () => this.#pluginState
   }
 
 
-  #updatePluginIdsBufferRef: Record<string, null> = {}
   #rootToken: string | undefined
-  #updatePluginIdsDebouncerRef: ReturnType<typeof setTimeout> | null = null
   #lastPluginUpdate: Record<string, [Date, z.infer<typeof PluginStateZod>]> = {}
   /**
    * Invoked by Browser when this node is attached (=created). We use this to create any relevant listeners
    */
-  connectedCallback() {
-    const unlisten = listen("core/plugins/update", (ev) => {
+  async connectedCallback() {
+    this.#rootToken = await getRootToken()
+    this.#pluginState = Object.fromEntries(Object.entries(await getAllPluginStates()).map(([k, v]) => [k, { ...v, currentUiState: { type: "Missing" } }]))
+    this.#updatePluginById(undefined)
+
+    const unlisten = await listen("core/plugins/update", (ev) => {
       console.log("core/plugins/update", ev.payload);
       const resp = z
         .object({ id: z.string(), pluginState: PluginStateZod })
@@ -85,24 +88,22 @@ export default class PluginsManager extends HTMLElement {
       } else {
         this.#lastPluginUpdate[resp.id] = [now, resp.pluginState]
       }
-      // we debouce this because otherwise we drop events in case we get many updates in quick succession (e.g. reconcile)
-      this.#updatePluginIdsBufferRef[resp.id] = null; // discount hashset
-      if (this.#updatePluginIdsDebouncerRef !== null) {
-        clearTimeout(this.#updatePluginIdsDebouncerRef);
+      if (!this.#pluginState[resp.id]) {
+        this.#pluginState[resp.id] = {
+          ...resp.pluginState,
+          "currentUiState": {
+            type: "Missing"
+          }
+        }
+      } else {
+        this.#pluginState[resp.id] = {
+          ...this.#pluginState[resp.id],
+          ...resp.pluginState
+        }
       }
-      this.#updatePluginIdsDebouncerRef = setTimeout(async () => {
-        this.#updatePluginIdsDebouncerRef = null;
-        const updatedPluginIDs = Object.keys(this.#updatePluginIdsBufferRef)
-        this.#updatePluginIdsBufferRef = {};
-        this.#updatePluginsByIds(updatedPluginIDs)
-      }, 100);
+      this.#updatePluginById(resp.id)
     })
-    unlisten.then(e => this.#destructorCallbacks.push(e))
-    getRootToken().then(async token => {
-      this.#rootToken = token
-      this.#pluginState = Object.fromEntries(Object.entries(await getAllPluginStates()).map(([k, v]) => [k, { ...v, currentUiState: { type: "Missing" } }]))
-      this.#updatePluginsByIds(undefined)
-    })
+    this.#destructorCallbacks.push(unlisten)
   }
   /**
    * Invoked by Browser when this node is destroyed. Does cleanup
@@ -111,9 +112,9 @@ export default class PluginsManager extends HTMLElement {
     this.#destructorCallbacks.forEach(e => e())
   }
 
-  #updatePluginsByIds(updatedPluginIds: string[] | undefined) {
+  #updatePluginById(updatedPluginIds: string | undefined) {
     for (const item of Object.entries(this.#pluginState).filter(
-      (e) => updatedPluginIds === undefined || updatedPluginIds.includes(e[0])
+      (e) => updatedPluginIds === undefined || updatedPluginIds == e[0]
     )) {
       const [pluginID, pluginState] = item;
       const currentState = pluginState.current_state.type
@@ -124,16 +125,17 @@ export default class PluginsManager extends HTMLElement {
       if (currentState === "Starting" || (currentState === "Running" && pluginState.currentUiState.type === "Missing")) {
         // Do reconciliation for Starting (or adopting after a refresh of the UI)
         if (this.#rootToken) {
-          startAndLoadPlugin(pluginID, this.#rootToken, this);
+          startAndLoadPlugin(pluginID, this.#rootToken, (e) => this.#setLoadedPluginsLookup(e, pluginID));
         }
         else {
           console.error("couldnt start the plugin because we do not have a root token")
         }
       }
+
       if (currentState === "Disabling") {
         (async () => {
           // Do reconciliation for Disabling
-          await this.setLoadedPluginsLookup({ type: "Missing" }, pluginID)
+          await this.#setLoadedPluginsLookup({ type: "Missing" }, pluginID)
           await invoke("finalize_stop_plugin", { pluginId: pluginID });
           return;
         })();
@@ -145,15 +147,10 @@ export default class PluginsManager extends HTMLElement {
 
 
   /**
-   * This uses a naive diffing approach of comparing object instances.
-   * An update MUST be a new object.
-   * 
    * Note that PluginsManager is the one responsible for Creating, Moving and Sunsetting Plugin Instances!
    */
-  async setLoadedPluginsLookup(newState: z.infer<typeof CurrentUiStateZod>, pluginId: string) {
-    if (newState.type === "Missing") {
-      debugger
-    }
+  async #setLoadedPluginsLookup(newState: z.infer<typeof CurrentUiStateZod>, pluginId: string) {
+
 
     // check if a Wrapper exists for it already
     let wrapper = document.getElementById("plugin-cell-" + pluginId)
