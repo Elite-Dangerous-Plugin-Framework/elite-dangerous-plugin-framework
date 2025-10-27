@@ -6,7 +6,9 @@ import { CurrentUiStateZod } from "./PluginsManager";
 export function startAndLoadPlugin(
   pluginID: string,
   rootTokenRef: string | undefined,
-  newStateCallback: (newState: z.infer<typeof CurrentUiStateZod>) => Promise<void>
+  newStateCallback: (
+    newState: z.infer<typeof CurrentUiStateZod>
+  ) => Promise<void>
 ) {
   (async () => {
     const result = z
@@ -66,8 +68,9 @@ export function startAndLoadPlugin(
       });
       return;
     }
-    let customElementID = `main-${pluginID}-${result.success ? result.hash : "no-hash"
-      }`;
+    let customElementID = `main-${pluginID}-${
+      result.success ? result.hash : "no-hash"
+    }`;
     if (!customElements.get(customElementID)) {
       customElements.define(customElementID, module.default);
     } else {
@@ -105,13 +108,11 @@ export function startAndLoadPlugin(
       return;
     }
 
-    document.getElementById("plugins-staging-ground")!.appendChild(item);
     const { data }: { data: string } = await invoke(
       "get_instance_id_by_plugin",
       { pluginId: pluginID, rootToken: rootTokenRef }
     );
     const { ctx, notifyDestructor } = await PluginContext.create(data);
-
     try {
       item.initPlugin(ctx);
     } catch {
@@ -127,11 +128,13 @@ export function startAndLoadPlugin(
       context: ctx,
       ref: item,
       customElementName: customElementID,
-      contextDestruction: notifyDestructor
-    })
+      contextDestruction: async () => {
+        await notifyDestructor();
+        item.remove();
+      },
+    });
     await invoke("finalize_start_plugin", {
       pluginId: pluginID,
     });
   })();
 }
-

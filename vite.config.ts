@@ -9,17 +9,6 @@ export default defineConfig(async () => ({
   plugins: [
     react(),
     tailwindcss(),
-    {
-      // We work a lot with Custom Elements.
-      // These are *STATEFUL* - meaning we cannot just do HMR and replace them in-place.
-      // Hence the full reload
-      name: 'force-full-reload',
-      handleHotUpdate({ server }) {
-        // Trigger full page reload every time
-        server.ws.send({ type: 'full-reload' });
-        return [];
-      },
-    }
   ],
 
   // Vite options tailored for Tauri development and only applied in `tauri dev` or `tauri build`

@@ -6,10 +6,7 @@ import { SettingsPluginPane } from "./SettingsPluginPane";
 import { listen } from "@tauri-apps/api/event";
 import { getAllPluginStates } from "../commands/getAllPluginStates";
 import { PluginCurrentStateKeys } from "../types/PluginCurrentState";
-import {
-  countPluginStates,
-  PluginStateUIData,
-} from "./utils";
+import { countPluginStates, PluginStateUIData } from "./utils";
 import { ZondiconsFolder } from "../icons/pluginType";
 import { invoke } from "@tauri-apps/api/core";
 
@@ -98,11 +95,7 @@ export default function Settings() {
   );
 }
 
-function SettingsMain({
-  plugin,
-}: {
-  plugin: PluginState | undefined;
-}) {
+function SettingsMain({ plugin }: { plugin: PluginState | undefined }) {
   if (!plugin) {
     return (
       <div>
@@ -130,7 +123,7 @@ function SettingsSidebarPlugin({
   }
 
   // Reduce the stateful enums down to stateless enums
-  const currentStateType = plugin.current_state.type
+  const currentStateType = plugin.current_state.type;
 
   return (
     <button
@@ -140,8 +133,9 @@ function SettingsSidebarPlugin({
           ? PluginStateUIData[currentStateType].colour + "40"
           : "unset",
       }}
-      className={`inline-flex items-center gap-1 flex-row w-full p-2 text-xs cursor-pointer hover:bg-white/10 ${selected ? " underline" : ""
-        }`}
+      className={`inline-flex items-center gap-1 flex-row w-full p-2 text-xs cursor-pointer hover:bg-white/10 ${
+        selected ? " underline" : ""
+      }`}
     >
       <StatusIndicator state={currentStateType} />
       <p className=" inline-flex justify-baseline items-center gap-1">{name}</p>
@@ -150,7 +144,6 @@ function SettingsSidebarPlugin({
 }
 
 export function StatusIndicator({ state }: { state: PluginCurrentStateKeys }) {
-  console.log(state)
   return (
     <span title={state} className="relative flex size-3">
       {PluginStateUIData[state].pulsating && (
