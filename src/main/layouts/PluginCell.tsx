@@ -89,14 +89,6 @@ export default function PluginCell({
               </span>
             </div>
             <div className="flex-1" />
-            {!hideActionButton && (
-              <button
-                title="Move to Parking Lot"
-                className=" cursor-pointer hover:animate-pulse"
-              >
-                <ParkingLotIcon className="w-6 h-6" />
-              </button>
-            )}
           </div>
         </div>
       )}

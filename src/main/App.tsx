@@ -12,6 +12,49 @@ import { ChevronUp, ParkingLotIcon } from "../icons/parkingLot";
 import PluginCell from "./layouts/PluginCell";
 import { PluginStateCtx } from "./contexts/pluginStateContext";
 import { Active, DndContext, DragOverlay } from "@dnd-kit/core";
+import { ParkingLotDropTarget } from "./layouts/DropTarget";
+
+function traverseNode(
+  el: z.infer<typeof AnyNodeZod>,
+  containerId: string
+): z.infer<typeof AnyNodeZod> | undefined {
+  switch (el.type) {
+    case "PluginCell":
+      if (el.plugin_id === containerId) {
+        return el;
+      }
+      return undefined;
+    case "VerticalLayout":
+      if (el.identifier === containerId) {
+        return el;
+      }
+
+      return el.children
+        .map((e) => {
+          return traverseNode(e, containerId);
+        })
+        .find(Boolean);
+  }
+}
+
+function removeOldItemInChildren(
+  el: z.infer<typeof AnyNodeZod>,
+  containerId: string
+) {
+  if (el.type === "PluginCell") {
+    // plugin cells cant have children. Nothing we can do here. This needs to be done in the parent
+    return;
+  }
+  el.children = el.children.filter((e) => {
+    switch (e.type) {
+      case "PluginCell":
+        return e.plugin_id !== containerId || e.newElement;
+      case "VerticalLayout":
+        removeOldItemInChildren(e, containerId);
+        return e.identifier !== containerId || e.newElement;
+    }
+  });
+}
 
 // This function traverses all known plugins and returns the ones that are not found within the layout
 function makePluginIdsInParkingLot(
@@ -117,94 +160,62 @@ function App() {
           }
           // if here, the element was moved. We try to find the Container to insert the element into
           const movedItemData = AnyNodeZod.parse(ev.active.data.current);
-          const targetData = z
-            .object({
-              containerId: z.string(),
-              afterId: z.string().optional(),
-            })
-            .parse(ev.over.data.current);
 
           // Iterate over the entire layount looking for the parent container
-          function traverseNode(
-            el: z.infer<typeof AnyNodeZod>,
-            containerId: string
-          ): z.infer<typeof AnyNodeZod> | undefined {
-            switch (el.type) {
-              case "PluginCell":
-                if (el.plugin_id === containerId) {
-                  return el;
-                }
-                return undefined;
-              case "VerticalLayout":
-                if (el.identifier === containerId) {
-                  return el;
-                }
-
-                return el.children
-                  .map((e) => {
-                    return traverseNode(e, containerId);
-                  })
-                  .find(Boolean);
-            }
-          }
           if (!layout) {
             console.warn("Layout not defined. Ignoring move");
             return;
           }
           const clonedLayout = structuredClone(layout);
-          const parentContainer = traverseNode(
-            clonedLayout.root,
-            targetData.containerId
-          );
-          if (!parentContainer) {
-            console.warn(
-              "Tried looking for parent container, but couldnt find it"
+          // We only insert if we didnt move this over our magic parking lot container
+          if (ev.over.id !== "\t@parkinglot") {
+            const targetData = z
+              .object({
+                containerId: z.string(),
+                afterId: z.string().optional(),
+              })
+              .parse(ev.over.data.current);
+            const parentContainer = traverseNode(
+              clonedLayout.root,
+              targetData.containerId
             );
-            return;
-          }
-          if (parentContainer.type !== "VerticalLayout") {
-            console.warn("found container is not a layout. shouldnt happen");
-            return;
-          }
-          let indexInContainer = -1;
-          if (targetData.afterId) {
-            indexInContainer = parentContainer.children.findIndex((e) => {
-              switch (e.type) {
-                case "PluginCell":
-                  return e.plugin_id === targetData.afterId;
-                case "VerticalLayout":
-                  return e.identifier === targetData.afterId;
-              }
-            });
-          }
-          movedItemData.newElement = true;
-
-          // -1 means "insert at the start". We add 1 so we actually reference the index
-          indexInContainer++;
-          if (indexInContainer > parentContainer.children.length) {
-            parentContainer.children.push(movedItemData);
-          } else {
-            parentContainer.children.splice(indexInContainer, 0, movedItemData);
-          }
-          // we then iterate over the entire tree again, but remove any item that does not have the newElement=true set
-          function removeOldItemInChildren(
-            el: z.infer<typeof AnyNodeZod>,
-            containerId: string
-          ) {
-            if (el.type === "PluginCell") {
-              // plugin cells cant have children. Nothing we can do here. This needs to be done in the parent
+            if (!parentContainer) {
+              console.warn(
+                "Tried looking for parent container, but couldnt find it"
+              );
               return;
             }
-            el.children = el.children.filter((e) => {
-              switch (e.type) {
-                case "PluginCell":
-                  return e.plugin_id !== containerId || e.newElement;
-                case "VerticalLayout":
-                  removeOldItemInChildren(e, containerId);
-                  return e.identifier !== containerId || e.newElement;
-              }
-            });
+            if (parentContainer.type !== "VerticalLayout") {
+              console.warn("found container is not a layout. shouldnt happen");
+              return;
+            }
+            let indexInContainer = -1;
+            if (targetData.afterId) {
+              indexInContainer = parentContainer.children.findIndex((e) => {
+                switch (e.type) {
+                  case "PluginCell":
+                    return e.plugin_id === targetData.afterId;
+                  case "VerticalLayout":
+                    return e.identifier === targetData.afterId;
+                }
+              });
+            }
+            movedItemData.newElement = true;
+
+            // -1 means "insert at the start". We add 1 so we actually reference the index
+            indexInContainer++;
+            if (indexInContainer > parentContainer.children.length) {
+              parentContainer.children.push(movedItemData);
+            } else {
+              parentContainer.children.splice(
+                indexInContainer,
+                0,
+                movedItemData
+              );
+            }
+            // we then iterate over the entire tree again, but remove any item that does not have the newElement=true set
           }
+
           removeOldItemInChildren(
             clonedLayout.root,
             movedItemData.type === "PluginCell"
@@ -257,8 +268,8 @@ function App() {
                     Parked plugins are still executed
                   </span>
                 </div>
-                <section id="parking-lot-inner" className="relative">
-                  <div className="flex flex-row max-w-full overflow-x-scroll flex-1 bg-green-950">
+                <section id="parking-lot-inner" className="relative h-full">
+                  <div className="flex flex-row max-w-full overflow-x-scroll h-full flex-1 bg-green-950">
                     {pluginsInParkingLot ? (
                       pluginsInParkingLot.length > 0 ? (
                         pluginsInParkingLot.map((e) => (
@@ -284,10 +295,8 @@ function App() {
                           </p>
                           <span className=" mx-2  ">
                             All your active plugins are on the main layout.
-                            Feeling crammed? Click the{" "}
-                            <ParkingLotIcon className="inline mx-1" />
-                            on the Plugins, or drag them into here to move them
-                            into the parking lot
+                            Feeling crammed? Drag your plugins into here to move
+                            them into the parking lot
                           </span>
                         </div>
                       )
@@ -295,9 +304,7 @@ function App() {
                       <span>Loading…</span>
                     )}
                   </div>
-                  <div className="absolte w-full h-full rounded-3xl top-0 left-0 bg-amber-200/10">
-                    sdasd
-                  </div>
+                  {currentDraggingItem && <ParkingLotDropTarget />}
                 </section>
               </div>
             </div>
