@@ -36,8 +36,11 @@ export type PluginCurrentStateRunning = z.infer<
 
 export const PluginCurrentStateZod = z.union([
   PluginCurrentStateStartingZod,
-  PluginCurrentStateDisabledZod, PluginCurrentStateFailedToStartZod, PluginCurrentStateDisablingZod, PluginCurrentStateRunningZod
+  PluginCurrentStateDisabledZod,
+  PluginCurrentStateFailedToStartZod,
+  PluginCurrentStateDisablingZod,
+  PluginCurrentStateRunningZod,
 ]);
 
 export type PluginCurrentState = z.infer<typeof PluginCurrentStateZod>;
-export type PluginCurrentStateKeys = PluginCurrentState["type"]
+export type PluginCurrentStateKeys = PluginCurrentState["type"];
