@@ -1,6 +1,6 @@
 import z from "zod";
 import { PluginCellNodeZod } from "./types";
-import { GripIcon, ParkingLotIcon } from "../../icons/parkingLot";
+import { GripIcon } from "../../icons/parkingLot";
 import { usePluginState } from "../hooks/usePluginState";
 import { useEffect, useRef } from "react";
 import { PluginStateUIData } from "../../settings/utils";
@@ -10,7 +10,6 @@ import { useDraggable } from "@dnd-kit/core";
 export interface PluginCellProps {
   layout: z.infer<typeof PluginCellNodeZod>;
   editMode: boolean;
-  hideActionButton?: boolean;
 }
 
 interface PluginPortalProps {
@@ -29,11 +28,7 @@ function PluginPortal({ reference }: PluginPortalProps) {
   return <div ref={divRef}></div>;
 }
 
-export default function PluginCell({
-  layout,
-  editMode,
-  hideActionButton,
-}: PluginCellProps) {
+export default function PluginCell({ layout, editMode }: PluginCellProps) {
   const { max_height, min_height, min_width, max_width } = layout.meta;
 
   const { attributes, listeners, setNodeRef, active } = useDraggable({

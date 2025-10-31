@@ -39,9 +39,7 @@ export default class PluginsManager {
       string,
       z.infer<typeof PluginStateContainingCurrentStateZod>
     >
-  ) => {
-    return;
-  };
+  ) => {};
 
   async init(
     updatePluginState: (

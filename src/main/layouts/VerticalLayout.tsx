@@ -1,8 +1,8 @@
 import z from "zod";
 import { VerticalNodeZod } from "./types";
 import PluginCell from "./PluginCell";
-import { useDndContext, useDraggable, useDroppable } from "@dnd-kit/core";
-import React, { act } from "react";
+import { useDndContext } from "@dnd-kit/core";
+import React from "react";
 import DropTarget from "./DropTarget";
 
 export interface VerticalLayoutProps {
@@ -46,7 +46,7 @@ export default function VerticalLayout({
           return (
             <React.Fragment key={e.plugin_id}>
               <PluginCell layout={e} editMode={editMode} />
-              {editMode && active ? (
+              {editMode && active && active.id !== e.plugin_id ? (
                 <DropTarget
                   alignment="vertical"
                   containerId={layout.identifier}
@@ -59,34 +59,4 @@ export default function VerticalLayout({
       })}
     </fieldset>
   );
-}
-
-type Result<A, B> =
-  | {
-      ok: true;
-      data: A;
-    }
-  | {
-      ok: false;
-      err: B;
-    };
-
-function Ok<A>(a: A) {
-  return {
-    ok: true as const,
-    data: a,
-  };
-}
-function Err<A>(a: A) {
-  return {
-    ok: false as const,
-    err: a,
-  };
-}
-
-function xdfas(a: Result<number, string>) {
-  if (a.ok) {
-  } else {
-    a.err;
-  }
 }
