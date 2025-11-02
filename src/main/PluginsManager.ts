@@ -1,30 +1,94 @@
 import z from "zod";
-import { startAndLoadPlugin } from "./startAndLoadPlugin";
-import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { PluginStateZod } from "../types/PluginState";
 import { getAllPluginStates } from "../commands/getAllPluginStates";
-import { PluginWrapper } from "./PluginWrapper";
-import { getRootToken } from "../commands/getRootToken";
 import { PluginContext } from "./PluginContext";
+import { PluginReconciler } from "./PluginReconciler";
+import { Mutex } from "@livekit/mutex";
+
+function equatePluginStates(
+  a: undefined | PluginStates[string],
+  b: undefined | PluginStates[string]
+): boolean {
+  if (!a && !b) {
+    return true;
+  }
+  if (!a || !b) {
+    return false;
+  }
+
+  if (
+    a.frontend_hash !== b.frontend_hash ||
+    a.current_state.type !== b.current_state.type ||
+    a.id !== b.id ||
+    a.plugin_dir !== b.plugin_dir ||
+    a.source !== b.source ||
+    a.currentUiState.type !== b.currentUiState.type
+  ) {
+    return false;
+  }
+  if (
+    a.currentUiState.type === "Running" &&
+    b.currentUiState.type === "Running" &&
+    (a.currentUiState.ref !== b.currentUiState.ref ||
+      a.currentUiState.context !== b.currentUiState.context)
+  ) {
+    return false;
+  }
+  if (
+    a.manifest.type !== b.manifest.type ||
+    a.manifest.name !== b.manifest.name ||
+    a.manifest
+  ) {
+    return false;
+  }
+  return true;
+}
+
+function clonePluginState(a: PluginStates[string]): PluginStates[string] {
+  return {
+    ...a,
+    currentUiState: {
+      ...a.currentUiState,
+    },
+    current_state: {
+      ...a.current_state,
+    },
+    manifest: {
+      ...a.manifest,
+    },
+  };
+}
 
 export const CurrentUiStateZod = z.union([
   z.object({
     type: z.literal("Running"),
     ref: z.instanceof(HTMLElement),
-    contextDestruction: z.function(),
-    customElementName: z.string(),
+    contextDestruction: z.function({
+      input: z.tuple([]),
+    }),
+    hash: z.string(),
+    notifySettingsChanged: z.function({
+      input: z.tuple([z.string(), z.string()]),
+    }),
     context: z.instanceof(PluginContext),
   }),
   z.object({
     type: z.literal("Missing"),
   }),
 ]);
-export const PluginStateContainingCurrentStateZod = PluginStateZod.and(
-  z.object({
-    currentUiState: CurrentUiStateZod,
-  })
-);
+export const PluginStateContainingCurrentStateZod =
+  PluginStateZod.readonly().and(
+    z.object({
+      currentUiState: CurrentUiStateZod,
+    })
+  );
+
+export type PluginStates = Record<
+  string,
+  z.infer<typeof PluginStateContainingCurrentStateZod>
+>;
+export type PluginStatesPatch = (state: PluginStates) => void;
 
 export default class PluginsManager {
   #destructorCallbacks: (() => void)[] = [];
@@ -32,142 +96,125 @@ export default class PluginsManager {
     string,
     z.infer<typeof PluginStateContainingCurrentStateZod>
   > = {};
+  /**
+   * When we get a new plugin state via an event, we put a new event onto the stack.
+   * We aggregate them and then apply them after a burst of events is over
+   *
+   * # WARNING
+   * Access to this resource is gated behind the {@link PluginsManager.#pluginUpdateMutex} Mutex
+   */
+  #pluginStatePatches: ((state: PluginStates) => void)[] = [];
+  #pluginUpdateMutex = new Mutex();
+  #pluginStateUpdatedCb: PluginStatesPatch = (_: PluginStates) => {};
 
-  #rootToken: string | undefined;
-  #pluginStateUpdatedCb = (
-    newState: Record<
-      string,
-      z.infer<typeof PluginStateContainingCurrentStateZod>
-    >
-  ) => {};
+  constructor(private reconciler: PluginReconciler) {}
 
-  async init(
-    updatePluginState: (
-      newState: Record<
-        string,
-        z.infer<typeof PluginStateContainingCurrentStateZod>
-      >
-    ) => void
-  ) {
-    this.#rootToken = await getRootToken();
-    this.#pluginState = Object.fromEntries(
-      Object.entries(await getAllPluginStates()).map(([k, v]) => [
-        k,
-        { ...v, currentUiState: { type: "Missing" } },
-      ])
+  async init(updatePluginState: (newState: PluginStates) => void) {
+    const changeSet = Object.entries(await getAllPluginStates()).map(
+      ([k, v]) => [k, { ...v, currentUiState: { type: "Missing" } }] as const
     );
-    this.#updatePluginById(undefined);
-    this.#pluginStateUpdatedCb = updatePluginState;
-    this.#pluginStateUpdatedCb(this.#pluginState);
 
-    const unlisten = await listen("core/plugins/update", (ev) => {
+    this.#pluginStatePatches.push((state) => {
+      changeSet.forEach(([k, v]) => {
+        state[k] = v;
+      });
+    });
+    this.#pluginStatePatchesTouched();
+
+    this.#pluginStateUpdatedCb = updatePluginState;
+
+    const unlisten = await listen("core/plugins/update", async (ev) => {
       const resp = z
         .object({ id: z.string(), pluginState: PluginStateZod })
         .parse(ev.payload);
 
-      if (!this.#pluginState[resp.id]) {
-        this.#pluginState[resp.id] = {
-          ...resp.pluginState,
-          currentUiState: {
-            type: "Missing",
-          },
-        };
-      } else {
-        this.#pluginState[resp.id] = {
-          ...this.#pluginState[resp.id],
-          ...resp.pluginState,
-        };
+      const patch = (pluginState: PluginStates) => {
+        if (!pluginState[resp.id]) {
+          pluginState[resp.id] = {
+            ...resp.pluginState,
+            currentUiState: {
+              type: "Missing",
+            },
+          };
+        } else {
+          pluginState[resp.id] = {
+            ...pluginState[resp.id],
+            ...resp.pluginState,
+          };
+        }
+      };
+      const unlock = await this.#pluginUpdateMutex.lock();
+      try {
+        this.#pluginStatePatches.push(patch);
+        this.#pluginStatePatchesTouched();
+      } finally {
+        unlock();
       }
-      this.#updatePluginById(resp.id);
     });
     this.#destructorCallbacks.push(unlisten);
   }
 
-  destroy() {
-    this.#destructorCallbacks.forEach((e) => e());
-  }
-
-  #updatePluginById(updatedPluginIds: string | undefined) {
-    for (const item of Object.entries(this.#pluginState).filter(
-      (e) => updatedPluginIds === undefined || updatedPluginIds == e[0]
-    )) {
-      const [pluginID, pluginState] = item;
-      const currentState = pluginState.current_state.type;
-      const maybePluginWrapper = document.getElementById(
-        "plugin-cell-" + pluginID
-      );
-      if (maybePluginWrapper && maybePluginWrapper instanceof PluginWrapper) {
-        maybePluginWrapper.notifyAboutNewPluginState(pluginState);
-      }
-      if (
-        currentState === "Starting" ||
-        (currentState === "Running" &&
-          pluginState.currentUiState.type === "Missing")
-      ) {
-        // Do reconciliation for Starting (or adopting after a refresh of the UI)
-        if (this.#rootToken) {
-          startAndLoadPlugin(pluginID, this.#rootToken, (e) =>
-            this.#setLoadedPluginsLookup(e, pluginID)
-          );
-        } else {
-          console.error(
-            "couldnt start the plugin because we do not have a root token"
+  /**
+   * Whenever we get an event, this function should be invoked. We wait 100ms after we get an event, as events can come in bursts.
+   */
+  #pluginStatePatchesTouched() {
+    if (this.#pluginStatePatchesTouchedTimeout) {
+      clearTimeout(this.#pluginStatePatchesTouchedTimeout);
+    }
+    this.#pluginStatePatchesTouchedTimeout = setTimeout(async () => {
+      // if here, we drain the queue of events. We collect the plugins that have updated in the meantime
+      // We could do some granular checking of which states were updated. But it is easier to just let the plugins reconcile themselves
+      console.error("awaiting lock");
+      const unlock = await this.#pluginUpdateMutex.lock();
+      console.error("locked");
+      try {
+        const newState = Object.fromEntries(
+          Object.entries(this.#pluginState).map(([k, v]) => [
+            k,
+            clonePluginState(v),
+          ])
+        );
+        while (true) {
+          const patch = this.#pluginStatePatches.shift();
+          if (!patch) {
+            // We drained the patches.
+            break;
+          }
+          patch(newState);
+        }
+        // This does not find completely removed plugins. But this is fine. A plugin shall only be ever removed after it was fully uninitialized!
+        const changedPlugins = Object.keys(newState).filter(
+          (e) => !equatePluginStates(newState[e], this.#pluginState[e])
+        );
+        this.#pluginState = newState;
+        const patches: PluginStatesPatch[] = [];
+        for (const plugin of changedPlugins) {
+          patches.push(
+            ...(await this.reconciler.reconcilePlugin(newState[plugin]))
           );
         }
+        if (patches.length > 0) {
+          this.#pluginStatePatches.push(...patches);
+          this.#pluginStatePatchesTouched();
+        }
+      } catch (err) {
+        console.error({ err });
+      } finally {
+        console.error("unlocking");
+        unlock();
       }
 
-      if (currentState === "Disabling") {
-        (async () => {
-          // Do reconciliation for Disabling
-          await this.#setLoadedPluginsLookup({ type: "Missing" }, pluginID);
-          await invoke("finalize_stop_plugin", { pluginId: pluginID });
-          return;
-        })();
-      }
-    }
+      this.#pluginStateUpdatedCb(this.#pluginState);
+    }, 100);
   }
+  #pluginStatePatchesTouchedTimeout: number | undefined;
 
-  /**
-   * Note that PluginsManager is the one responsible for Creating, Moving and Sunsetting Plugin Instances!
-   */
-  async #setLoadedPluginsLookup(
-    newState: z.infer<typeof CurrentUiStateZod>,
-    pluginId: string
-  ) {
-    const previousRef =
-      this.#pluginState[pluginId] &&
-      this.#pluginState[pluginId].currentUiState.type === "Running"
-        ? this.#pluginState[pluginId].currentUiState.ref
-        : undefined;
-    const newRef = newState.type === "Running" ? newState.ref : undefined;
-
-    let needAdoption = false;
-    let needDeletion = false;
-    if (newRef === previousRef) {
-      // its the same node. We dont need to destroy the node to recreate it
-    } else if (previousRef === undefined && newRef !== undefined) {
-      // We are at the start of a plugin. It wasnt existing beforehand
-      needAdoption = true;
-    } else if (previousRef !== undefined && newRef !== previousRef) {
-      // We are restarting a plugin
-      needAdoption = true;
-      needDeletion = true;
-    } else if (newRef === undefined && previousRef !== undefined) {
-      needDeletion = true;
-    }
-
-    if (needDeletion) {
-      // todo: await shutdown grace period using ctx
-      const maybePromise =
-        this.#pluginState[pluginId].currentUiState.type === "Running"
-          ? this.#pluginState[pluginId].currentUiState.contextDestruction()
-          : undefined;
-      if (maybePromise instanceof Promise) {
-        await maybePromise;
-      }
-    }
-    // attachment is done via React. The State change causes a rerender in React.
-    // this causes the HTML Element reference to be moved (appended) to the relevant node
-    this.#pluginState[pluginId].currentUiState = newState;
+  async destroy() {
+    this.#destructorCallbacks.forEach((e) => e());
+    const pluginDestructions = Object.values(this.#pluginState)
+      .map((e) => e.currentUiState)
+      .filter((e) => e.type === "Running")
+      .map((e) => e.contextDestruction() as Promise<void>);
+    await Promise.all(pluginDestructions);
   }
 }

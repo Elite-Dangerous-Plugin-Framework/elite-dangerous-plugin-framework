@@ -1,140 +1,110 @@
-import { invoke } from "@tauri-apps/api/core";
 import z from "zod";
 import { PluginContext } from "./PluginContext";
 import { CurrentUiStateZod } from "./PluginsManager";
+import type getImportPathForPlugin from "../commands/getImportPathForPlugin";
+import type startPluginFailed from "../commands/startPluginFailed";
+import type getInstanceByPluginId from "../commands/getInstanceByPluginId";
+import type finalizeStartPlugin from "../commands/finalizeStartPlugin";
 
-export function startAndLoadPlugin(
+// We extract the functions into a separate interface here to make testing easier
+interface StartAndLoadPluginCommands {
+  GetImportPath: typeof getImportPathForPlugin;
+  StartPluginFailed: typeof startPluginFailed;
+  GetInstanceByPluginId: typeof getInstanceByPluginId;
+  FinalizeStartPlugin: typeof finalizeStartPlugin;
+}
+
+export async function startAndLoadPlugin(
   pluginID: string,
-  rootTokenRef: string | undefined,
-  newStateCallback: (
-    newState: z.infer<typeof CurrentUiStateZod>
-  ) => Promise<void>
-) {
-  (async () => {
-    const result = z
-      .object({
-        success: z.literal(false),
-        reason: z.enum(["PLUGIN_NOT_FOUND"]),
-      })
-      .or(
-        z.object({
-          success: z.literal(true),
-          import: z.string(),
-          hash: z.string(),
-        })
-      )
-      .parse(
-        await invoke("get_import_path_for_plugin", { pluginId: pluginID })
-      );
-    if (!result.success) {
-      await invoke("start_plugin_failed", {
-        pluginId: pluginID,
-        reasons: [result.reason],
-      });
-      return;
-    }
-    // now try to import the module
-    let module: any;
-    try {
-      module = await import(/* @vite-ignore */ result.import);
-    } catch (err) {
-      console.error(err);
-      await invoke("start_plugin_failed", {
-        pluginId: pluginID,
-        reasons: ["MODULE_IMPORT_FAILED"],
-      });
-      return;
-    }
-    // if here, module exists
-    if (!module.default) {
-      // but doesnt have a default export
-      await invoke("start_plugin_failed", {
-        pluginId: pluginID,
-        reasons: ["NO_DEFAULT_EXPORT"],
-      });
-      return;
-    }
-    // This essentially checks if the export is a class definition that inherits HTMLElement
-    if (
-      typeof module.default !== "function" ||
-      !Object.prototype.isPrototypeOf.call(
-        HTMLElement.prototype,
-        module.default.prototype
-      )
-    ) {
-      await invoke("start_plugin_failed", {
-        pluginId: pluginID,
-        reasons: ["DEFAULT_EXPORT_NOT_HTMLELEMENT"],
-      });
-      return;
-    }
-    let customElementID = `main-${pluginID}-${
-      result.success ? result.hash : "no-hash"
-    }`;
-    if (!customElements.get(customElementID)) {
-      customElements.define(customElementID, module.default);
-    } else {
-      console.info("custom element was already defined");
-    }
-    console.info(
-      customElementID,
-      "registered:",
-      customElements.get(customElementID)
-    );
-    // We spawn the HTML Element
-    let item: HTMLElement;
-    try {
-      item = new module.default();
-    } catch (e) {
-      await invoke("start_plugin_failed", {
-        pluginId: pluginID,
-        reasons: ["INSTANTIATION_FAILED"],
-      });
-      return;
-    }
-    if (!(item instanceof HTMLElement)) {
-      await invoke("start_plugin_failed", {
-        pluginId: pluginID,
-        reasons: ["PLUGIN_INSTANCE_NOT_HTMLELEMENT"],
-      });
-      return;
-    }
-    if (!("initPlugin" in item) || typeof item.initPlugin !== "function") {
-      console.log(item);
-      await invoke("start_plugin_failed", {
-        pluginId: pluginID,
-        reasons: ["PLUGIN_MISSING_INIT_FUNCTION"],
-      });
-      return;
-    }
+  rootTokenRef: string,
+  {
+    GetImportPath,
+    StartPluginFailed,
+    GetInstanceByPluginId,
+    FinalizeStartPlugin,
+  }: StartAndLoadPluginCommands
+): Promise<undefined | z.infer<typeof CurrentUiStateZod>> {
+  const result = await GetImportPath(pluginID);
+  if (!result.success) {
+    await StartPluginFailed(pluginID, [result.reason]);
+    return;
+  }
+  // now try to import the module
+  let module: any;
+  try {
+    module = await import(/* @vite-ignore */ result.import);
+  } catch (err) {
+    await StartPluginFailed(pluginID, ["MODULE_IMPORT_FAILED"]);
+    return;
+  }
+  // if here, module exists
+  if (!module.default) {
+    // but doesnt have a default export
+    await StartPluginFailed(pluginID, ["NO_DEFAULT_EXPORT"]);
+    return;
+  }
+  // This essentially checks if the export is a class definition that inherits HTMLElement
+  if (
+    typeof module.default !== "function" ||
+    !Object.prototype.isPrototypeOf.call(
+      HTMLElement.prototype,
+      module.default.prototype
+    )
+  ) {
+    await StartPluginFailed(pluginID, ["DEFAULT_EXPORT_NOT_HTMLELEMENT"]);
+    return;
+  }
+  let customElementID = `main-${pluginID}-${
+    result.success ? result.hash : "no-hash"
+  }`;
+  if (!customElements.get(customElementID)) {
+    customElements.define(customElementID, module.default);
+  } else {
+    console.info("custom element was already defined");
+  }
+  console.info(
+    customElementID,
+    "registered:",
+    customElements.get(customElementID)
+  );
+  // We spawn the HTML Element
+  let item: HTMLElement;
+  try {
+    item = new module.default();
+  } catch (e) {
+    await StartPluginFailed(pluginID, ["INSTANTIATION_FAILED"]);
+    return;
+  }
+  if (!(item instanceof HTMLElement)) {
+    await StartPluginFailed(pluginID, ["PLUGIN_INSTANCE_NOT_HTMLELEMENT"]);
+    return;
+  }
+  if (!("initPlugin" in item) || typeof item.initPlugin !== "function") {
+    await StartPluginFailed(pluginID, ["PLUGIN_MISSING_INIT_FUNCTION"]);
+    return;
+  }
 
-    const { data }: { data: string } = await invoke(
-      "get_instance_id_by_plugin",
-      { pluginId: pluginID, rootToken: rootTokenRef }
+  const { ctx, notifyDestructor, notifySettingsChanged } =
+    await PluginContext.create(
+      await GetInstanceByPluginId(pluginID, rootTokenRef)
     );
-    const { ctx, notifyDestructor } = await PluginContext.create(data);
-    try {
-      item.initPlugin(ctx);
-    } catch {
-      await invoke("start_plugin_failed", {
-        pluginId: pluginID,
-        reasons: ["PLUGIN_INIT_FUNCTION_ERRORED"],
-      });
-      return;
-    }
+  try {
+    item.initPlugin(ctx);
+  } catch (e) {
+    await StartPluginFailed(pluginID, ["PLUGIN_INIT_FUNCTION_ERRORED"]);
+    return;
+  }
 
-    await newStateCallback({
-      type: "Running",
-      context: ctx,
-      ref: item,
-      customElementName: customElementID,
-      contextDestruction: async () => {
-        await notifyDestructor();
-        item.remove();
-      },
-    });
-    await invoke("finalize_start_plugin", {
-      pluginId: pluginID,
-    });
-  })();
+  await FinalizeStartPlugin(pluginID);
+  return {
+    type: "Running",
+    context: ctx,
+    ref: item,
+    hash: result.hash,
+    contextDestruction: async () => {
+      await notifyDestructor();
+      item.remove();
+    },
+    notifySettingsChanged,
+  };
 }

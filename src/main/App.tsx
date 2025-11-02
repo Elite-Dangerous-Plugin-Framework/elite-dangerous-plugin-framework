@@ -11,6 +11,9 @@ import VerticalLayout from "./layouts/VerticalLayout";
 import { PluginStateCtx } from "./contexts/pluginStateContext";
 import { Active, DndContext, DragOverlay } from "@dnd-kit/core";
 import Parkinglot from "./Parkinglot";
+import { getRootToken } from "../commands/getRootToken";
+import PluginReconcilerImpl from "./PluginReconciler";
+import syncMainLayout from "../commands/syncMainLayout";
 
 function traverseNode(
   el: z.infer<typeof AnyNodeZod>,
@@ -81,7 +84,6 @@ function makePluginIdsInParkingLot(
   const idsNotInLayout = Object.keys(pluginIds).filter(
     (e) => !knownIds[e] && pluginIds[e]!.current_state.type !== "Disabled"
   );
-  console.log({ knownIds, idsNotInLayout });
 
   return idsNotInLayout;
 }
@@ -106,13 +108,13 @@ function App() {
   );
 
   useEffect(() => {
-    if (!pluginManagerRef.current) {
-      const manager = new PluginsManager();
+    syncMainLayout().then((e) => setLayout(e));
 
-      pluginManagerRef.current = manager;
-      manager.init((x) => {
-        console.log("RX new Plugin State", x);
-        setPluginState(x);
+    if (!pluginManagerRef.current) {
+      getRootToken().then((rootToken) => {
+        const reconciler = new PluginReconcilerImpl(rootToken);
+        const manager = new PluginsManager(reconciler);
+        manager.init(setPluginState);
       });
     }
     return () => {
@@ -121,13 +123,6 @@ function App() {
       }
     };
   }, []);
-  useEffect(() => {
-    invoke("sync_main_layout").then((e) => {
-      const { data } = z.object({ data: PluginViewStructureZod }).parse(e);
-      setLayout(data);
-    });
-  }, []);
-
   useEffect(() => {
     const win = getCurrentWindow();
     setAppWin(win);

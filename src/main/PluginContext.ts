@@ -15,11 +15,11 @@ export class PluginContext {
    * Use the context already provided to you in the Web Component constructor.
    */
   public constructor(instanceID: string) {
-    this.#instanceID = instanceID
+    this.#instanceID = instanceID;
   }
   #destroyed = false;
-  #instanceID = ""
-  #pluginID = ""
+  #instanceID = "";
+  #pluginID = "";
 
   /**
    * This returns true after the Context was destroyed.
@@ -95,79 +95,81 @@ export class PluginContext {
 
   /**
    * ## Used to listen for Settings
-   * 
+   *
    * Any plugin may listen for its own and other plugins changing their settings
-   * 
+   *
    * Do note that only keys where the last segment start **Uppercase** will be propagated here, except if the setting key is from your own plugin
-   * 
+   *
    */
-  public registerSettingsChangedListener(callback: (key: string, value: unknown) => void) {
+  public registerSettingsChangedListener(
+    callback: (key: string, value: unknown) => void
+  ) {
     if (this.#settingsChangedListener) {
       throw new Error("Event Listener can only be registered once per Plugin");
     }
-    this.#settingsChangedListener = callback
+    this.#settingsChangedListener = callback;
   }
   #settingsChangedListener: undefined | ((key: string, value: unknown) => void);
   /**
-   * Used internally - this is called by whatever created the context to notify it about a setting being updated 
-   * 
+   * Used internally - this is called by whatever created the context to notify it about a setting being updated
+   *
    * This function will filter this settings updates that this plugin shouldn't know about
    */
   #notifySettingsChanged(key: string, value: unknown) {
     if (!this.#settingsChangedListener) {
-      return
+      return;
     }
 
-    const keySegments = key.split(".")
+    const keySegments = key.split(".");
     if (keySegments.length < 2) {
-      return
+      return;
     }
-    const pluginIdInKey = keySegments[0]
-    const isPrivateContext = this.#pluginID === pluginIdInKey
-    const lastSegment = keySegments[keySegments.length - 1]
-    const startsUpperCase = lastSegment.charAt(0) === lastSegment.charAt(0).toUpperCase()
+    const pluginIdInKey = keySegments[0];
+    const isPrivateContext = this.#pluginID === pluginIdInKey;
+    const lastSegment = keySegments[keySegments.length - 1];
+    const startsUpperCase =
+      lastSegment.charAt(0) === lastSegment.charAt(0).toUpperCase();
     if (isPrivateContext || startsUpperCase) {
-      this.#settingsChangedListener(key, value)
+      this.#settingsChangedListener(key, value);
     }
   }
 
   /**
    * ## Request a reread of the current Journal
-   * 
+   *
    * This will re-read all open Journals (one per CMDR), which should get the plugin up to speed on the current context / state.
    */
   public async rereadCurrentJournals() {
-    throw new Error("not implemented")
+    throw new Error("not implemented");
   }
 
   /**
- * ## Write a setting for this plugin
- * 
- * You can also push settings outside the Settings UI. Use this function to write a key / value pair.
- * 
- * This is what you should look out for:
- * - The key contains segments, separated by a dot (.)
- * - You need at least 2 Segments
- * - the first segment **MUST** be your plugin ID
- * - the last segment determines if this is a "public" setting. If it starts uppercase, it is readable by every plugin
- *    - `myPlugin.some.key` is private. Only your own plugin can read and edit it and get notified about it
- *    - `myPlugin.some.Key` is public. You can read and edit it, other plugins can read it
- */
+   * ## Write a setting for this plugin
+   *
+   * You can also push settings outside the Settings UI. Use this function to write a key / value pair.
+   *
+   * This is what you should look out for:
+   * - The key contains segments, separated by a dot (.)
+   * - You need at least 2 Segments
+   * - the first segment **MUST** be your plugin ID
+   * - the last segment determines if this is a "public" setting. If it starts uppercase, it is readable by every plugin
+   *    - `myPlugin.some.key` is private. Only your own plugin can read and edit it and get notified about it
+   *    - `myPlugin.some.Key` is public. You can read and edit it, other plugins can read it
+   */
   public async writeSetting(key: string, value: unknown) {
-    throw new Error("not implemented")
+    throw new Error("not implemented");
   }
 
   /**
    * ## Fetches a setting by Key.
    * See Docs for {@link writeSetting()} for key structure
-   * 
+   *
    * Return the setting if present, undefined if it doesnt exist.
    * Throws an error if you are not allowed to access this setting
    */
   public async getSetting(key: string): Promise<unknown | undefined> {
-    throw new Error("not implemented")
+    throw new Error("not implemented");
   }
-
 
   /**
    * Creates a new Plugin Context. This is invoked by EDPF.
@@ -177,21 +179,25 @@ export class PluginContext {
    */
   public static async create(instanceID: string) {
     const ctx = new PluginContext(instanceID);
-    await ctx.#init()
+    await ctx.#init();
     return {
       ctx,
       notifyDestructor: ctx.#notifyDestroy,
-      notifysettingsChanged: ctx.#notifySettingsChanged
-    }
+      notifySettingsChanged: ctx.#notifySettingsChanged,
+    };
   }
   // called internally, uses the instanceID to get the pluginID and data
   async #init() {
-    const responseUnsafe = await invoke("get_plugin_by_instance_id", { instanceId: this.#instanceID })
-    const response = z.object({ success: z.literal(true), data: PluginStateZod }).or(z.object({ success: z.literal(false) })).parse(responseUnsafe)
+    const responseUnsafe = await invoke("get_plugin_by_instance_id", {
+      instanceId: this.#instanceID,
+    });
+    const response = z
+      .object({ success: z.literal(true), data: PluginStateZod })
+      .or(z.object({ success: z.literal(false) }))
+      .parse(responseUnsafe);
     if (!response.success) {
-      throw new Error("Failed to get Plugin from the Instance ID")
+      throw new Error("Failed to get Plugin from the Instance ID");
     }
-    this.#pluginID = response.data.id
-
+    this.#pluginID = response.data.id;
   }
 }
