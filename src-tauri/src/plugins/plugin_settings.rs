@@ -4,10 +4,9 @@
 //! also if the Plugin is new / unknown
 
 use serde::{Deserialize, Serialize};
-use tauri::{App, AppHandle, Runtime};
-use tauri_plugin_store::{StoreBuilder, StoreExt};
+use tauri::{AppHandle, Runtime};
+use tauri_plugin_store::StoreBuilder;
 use tracing::error;
-use uuid::uuid;
 #[derive(Debug, Serialize, Deserialize, Default)]
 /// This contains the entire **generic** Configurable State for a plugin.  
 /// Settings read/set from the Plugins themselves are managed separately

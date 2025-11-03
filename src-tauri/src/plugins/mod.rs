@@ -1,7 +1,7 @@
 use std::{
     collections::{HashMap, HashSet},
     fs::File,
-    path::PathBuf,
+    path::{Path, PathBuf},
     str::FromStr,
     sync::Arc,
     time::Duration,
@@ -17,7 +17,7 @@ use plugin_settings::PluginSettings;
 use reconciler_utils::ReconcileAction;
 use schemars::JsonSchema;
 use serde::Serialize;
-use serde_json::{Value, json};
+use serde_json::{json, Value};
 use tauri::{AppHandle, Manager, Runtime, Wry};
 use tauri_plugin_store::StoreExt;
 use tokio::{sync::RwLock, time::sleep};
@@ -144,7 +144,7 @@ impl PluginsState {
     ) -> anyhow::Result<()> {
         let maybe_event = ReconcileAction::Start { plugin_id: id }.apply(self)?;
         if let Some(x) = maybe_event {
-            x.emit(&app_handle)?;
+            x.emit(app_handle)?;
         }
         Ok(())
     }
@@ -167,7 +167,7 @@ impl PluginsState {
         }
         .apply(self)?;
         if let Some(x) = maybe_event {
-            x.emit(&app_handle)?;
+            x.emit(app_handle)?;
         }
         Ok(())
     }
@@ -183,7 +183,7 @@ impl PluginsState {
         }
         .apply(self)?;
         if let Some(x) = maybe_event {
-            x.emit(&app_handle)?;
+            x.emit(app_handle)?;
         }
         Ok(())
     }
@@ -379,7 +379,7 @@ impl PluginState {
         serde_json::from_reader(reader).map_err(|x| format!("failed to parse manifest: {}", x))
     }
 
-    fn get_frontend_dir_hash(manifest_path: &PathBuf) -> Option<String> {
+    fn get_frontend_dir_hash(manifest_path: &Path) -> Option<String> {
         let parent = match manifest_path.parent() {
             Some(x) => x.join("frontend"),
             None => return None,

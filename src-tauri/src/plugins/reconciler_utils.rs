@@ -2,7 +2,7 @@ use std::fmt;
 
 use serde::Serialize;
 use serde_json::json;
-use tauri::{AppHandle, Emitter, Runtime, Wry, plugin};
+use tauri::{AppHandle, Emitter, Runtime};
 use tracing::{instrument, warn};
 
 use super::{PluginCurrentState, PluginState, PluginsState};
@@ -247,15 +247,12 @@ impl ReconcileAction {
             }
         };
 
-        Ok(match plugins_states.get_cloned(&targeted_id) {
-            Some(x) => Some(EventEmit(
+        Ok(plugins_states.get_cloned(&targeted_id).map(|x| EventEmit(
                 "core/plugins/update".into(),
                 json!({
                     "id": targeted_id,
                     "pluginState": x
                 }),
-            )),
-            None => None,
-        })
+            )))
     }
 }
