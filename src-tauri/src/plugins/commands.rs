@@ -1,18 +1,17 @@
 use std::{path::PathBuf, str::FromStr, sync::Arc};
 
 use dirs::data_local_dir;
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use tauri::{Manager, Runtime};
 use tauri_plugin_store::StoreExt;
 use tokio::sync::RwLock;
-use tracing::warn;
 
 use crate::plugins::PluginStateSource;
 
 use super::{
+    PluginsState,
     frontend_server::HttpServerState,
     plugin_settings::{PluginSettings, PluginsUiConfig},
-    PluginsState,
 };
 
 #[tauri::command]

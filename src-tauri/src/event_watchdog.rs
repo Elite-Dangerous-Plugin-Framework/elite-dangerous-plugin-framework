@@ -12,7 +12,7 @@ use std::{
 };
 use tauri::{AppHandle, Emitter, Wry};
 use tokio::{sync::RwLock, time::sleep};
-use tracing::{error, info, info_span, warn, Instrument};
+use tracing::{Instrument, error, info, info_span, warn};
 
 pub(super) async fn event_watchdog(app_handle: AppHandle<Wry>) -> ! {
     // We spawn a background thread that is responsible to listen for changes to the journal directory.

@@ -2,7 +2,7 @@ use std::fmt;
 
 use serde::Serialize;
 use serde_json::json;
-use tauri::{plugin, AppHandle, Emitter, Runtime, Wry};
+use tauri::{AppHandle, Emitter, Runtime, Wry, plugin};
 use tracing::{instrument, warn};
 
 use super::{PluginCurrentState, PluginState, PluginsState};
@@ -91,16 +91,24 @@ impl fmt::Debug for ReconcileAction {
     }
 }
 
+pub(crate) struct EventEmit(String, serde_json::Value);
+
+impl EventEmit {
+    pub(crate) fn emit<R: Runtime>(&self, app: &AppHandle<R>) -> anyhow::Result<()> {
+        app.emit(&self.0, &self.1)?;
+        Ok(())
+    }
+}
+
 impl ReconcileAction {
     /// Applies the action.
     ///
     /// Responsible for modifying the PluginsState, modifying the HTTP Server config, and notifying to Frontend via an event that it should load/unload a plugin
     #[instrument]
-    pub(super) fn apply<R: Runtime>(
+    pub(super) fn apply(
         self,
         plugins_states: &mut PluginsState,
-        app_handle: &AppHandle<R>,
-    ) -> anyhow::Result<()> {
+    ) -> anyhow::Result<Option<EventEmit>> {
         let targeted_id = match self {
             ReconcileAction::Adopt {
                 plugin_state,
@@ -115,16 +123,19 @@ impl ReconcileAction {
                     ReconcileAction::Start {
                         plugin_id: plugin_id.clone(),
                     }
-                    .apply(plugins_states, app_handle)?;
+                    .apply(plugins_states)?;
                 }
                 plugin_id
             }
             ReconcileAction::Start { plugin_id } => {
                 let state = match plugins_states.plugin_states.get_mut(&plugin_id) {
                     None => {
-                        return Err(anyhow!("Received reconcile to start Plugin {}, but is missing in the plugins state", &plugin_id))
-                    },
-                    Some(x) => {x},
+                        return Err(anyhow!(
+                            "Received reconcile to start Plugin {}, but is missing in the plugins state",
+                            &plugin_id
+                        ));
+                    }
+                    Some(x) => x,
                 };
 
                 state.current_state = PluginCurrentState::Starting { metadata: vec![] };
@@ -149,9 +160,9 @@ impl ReconcileAction {
                 let state = match plugins_states.plugin_states.get_mut(&plugin_id) {
                     None => {
                         return Err(anyhow!(
-                        "Received reconcile to stop Plugin {}, but is missing in the plugins state",
-                        &plugin_id
-                    ))
+                            "Received reconcile to stop Plugin {}, but is missing in the plugins state",
+                            &plugin_id
+                        ));
                     }
                     Some(x) => x,
                 };
@@ -184,14 +195,14 @@ impl ReconcileAction {
                     plugin_id: plugin_id.clone(),
                     patch,
                 }
-                .apply(plugins_states, app_handle)?;
+                .apply(plugins_states)?;
 
                 let state = match plugins_states.plugin_states.get(&plugin_id) {
                     None => {
                         return Err(anyhow!(
-                        "Received reconcile to restart Plugin {}, but is missing in the plugins state",
-                        &plugin_id
-                    ))
+                            "Received reconcile to restart Plugin {}, but is missing in the plugins state",
+                            &plugin_id
+                        ));
                     }
                     Some(x) => x,
                 };
@@ -203,7 +214,7 @@ impl ReconcileAction {
                         ReconcileAction::Start {
                             plugin_id: plugin_id.clone(),
                         }
-                        .apply(plugins_states, app_handle)?;
+                        .apply(plugins_states)?;
                     }
                     PluginCurrentState::Starting { .. }
                     | PluginCurrentState::FailedToStart { .. }
@@ -213,7 +224,7 @@ impl ReconcileAction {
                         ReconcileAction::Start {
                             plugin_id: plugin_id.clone(),
                         }
-                        .apply(plugins_states, app_handle)?;
+                        .apply(plugins_states)?;
                     }
                 }
                 plugin_id
@@ -225,9 +236,9 @@ impl ReconcileAction {
                 let state = match plugins_states.plugin_states.get_mut(&plugin_id) {
                     None => {
                         return Err(anyhow!(
-                        "Received reconcile to sync in place Plugin {}, but is missing in the plugins state",
-                        &plugin_id
-                    ))
+                            "Received reconcile to sync in place Plugin {}, but is missing in the plugins state",
+                            &plugin_id
+                        ));
                     }
                     Some(x) => x,
                 };
@@ -236,15 +247,15 @@ impl ReconcileAction {
             }
         };
 
-        if let Some(plugin_state) = plugins_states.get_cloned(&targeted_id) {
-            _ = app_handle.emit(
-                "core/plugins/update",
+        Ok(match plugins_states.get_cloned(&targeted_id) {
+            Some(x) => Some(EventEmit(
+                "core/plugins/update".into(),
                 json!({
                     "id": targeted_id,
-                    "pluginState": plugin_state
+                    "pluginState": x
                 }),
-            );
-        }
-        Ok(())
+            )),
+            None => None,
+        })
     }
 }

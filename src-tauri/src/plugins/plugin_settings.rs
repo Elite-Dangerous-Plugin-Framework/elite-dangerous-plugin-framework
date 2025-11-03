@@ -89,11 +89,7 @@ impl PluginSettings {
                     None => return None,
                 };
 
-                if resp.enabled {
-                    Some(id.clone())
-                } else {
-                    None
-                }
+                if resp.enabled { Some(id.clone()) } else { None }
             })
             .collect())
     }

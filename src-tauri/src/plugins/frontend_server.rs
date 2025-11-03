@@ -8,12 +8,12 @@ use std::{
 use super::{PluginState, PluginsState};
 use anyhow::anyhow;
 use axum::{
+    Json, Router,
     body::Body,
     extract::{Path, State},
     http::{Response, StatusCode},
     response::IntoResponse,
     routing::get,
-    Json, Router,
 };
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Manager, Wry};
@@ -49,7 +49,9 @@ pub(crate) async fn spawn_server_blocking(app_handle: &AppHandle<Wry>) -> anyhow
     let addr = listener.local_addr().unwrap();
     {
         if !app_handle.manage(HttpServerState { address: addr }) {
-            return Err(anyhow!("The HTTP Server state was already set, meaning it was already running. Closing HTTP Server"));
+            return Err(anyhow!(
+                "The HTTP Server state was already set, meaning it was already running. Closing HTTP Server"
+            ));
         }
     }
 

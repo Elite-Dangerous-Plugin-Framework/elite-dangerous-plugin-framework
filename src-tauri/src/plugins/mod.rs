@@ -17,7 +17,7 @@ use plugin_settings::PluginSettings;
 use reconciler_utils::ReconcileAction;
 use schemars::JsonSchema;
 use serde::Serialize;
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use tauri::{AppHandle, Manager, Runtime, Wry};
 use tauri_plugin_store::StoreExt;
 use tokio::{sync::RwLock, time::sleep};
@@ -70,7 +70,7 @@ pub(crate) async fn get_root_token_once<R: Runtime>(
 
     if data.root_token_requested {
         #[cfg(not(debug_assertions))]
-        // During dev we might reload the window. To not cause any annoyances and having the fully restart the app, we ignore the case that 
+        // During dev we might reload the window. To not cause any annoyances and having the fully restart the app, we ignore the case that
         // the root token was already requested.
         return Ok(json!({"success": false, "reason": "TOKEN_ALREADY_REQUESTED"}));
     }
@@ -114,7 +114,11 @@ impl PluginsState {
         id: String,
         app_handle: &AppHandle<R>,
     ) -> anyhow::Result<()> {
-        ReconcileAction::Stop { plugin_id: id }.apply(self, app_handle)
+        let maybe_event = ReconcileAction::Stop { plugin_id: id }.apply(self)?;
+        if let Some(x) = maybe_event {
+            x.emit(app_handle)?;
+        }
+        Ok(())
     }
 
     pub(crate) async fn finalize_stop<R: Runtime>(
@@ -122,11 +126,15 @@ impl PluginsState {
         id: String,
         app_handle: &AppHandle<R>,
     ) -> anyhow::Result<()> {
-        ReconcileAction::SyncInPlace {
+        let maybe_event = ReconcileAction::SyncInPlace {
             plugin_id: id,
             patch: Box::new(|x| x.current_state = PluginCurrentState::Disabled {}),
         }
-        .apply(self, app_handle)
+        .apply(self)?;
+        if let Some(x) = maybe_event {
+            x.emit(app_handle)?;
+        }
+        Ok(())
     }
 
     pub(crate) async fn start<R: Runtime>(
@@ -134,7 +142,11 @@ impl PluginsState {
         id: String,
         app_handle: &AppHandle<R>,
     ) -> anyhow::Result<()> {
-        ReconcileAction::Start { plugin_id: id }.apply(self, app_handle)
+        let maybe_event = ReconcileAction::Start { plugin_id: id }.apply(self)?;
+        if let Some(x) = maybe_event {
+            x.emit(&app_handle)?;
+        }
+        Ok(())
     }
 
     pub(crate) async fn start_failed<R: Runtime>(
@@ -143,7 +155,7 @@ impl PluginsState {
         reasons: Vec<String>,
         app_handle: &AppHandle<R>,
     ) -> anyhow::Result<()> {
-        ReconcileAction::SyncInPlace {
+        let maybe_event = ReconcileAction::SyncInPlace {
             plugin_id: id,
             patch: Box::new(move |x| {
                 if matches!(&x.current_state, PluginCurrentState::Starting { .. }) {
@@ -153,7 +165,11 @@ impl PluginsState {
                 }
             }),
         }
-        .apply(self, app_handle)
+        .apply(self)?;
+        if let Some(x) = maybe_event {
+            x.emit(&app_handle)?;
+        }
+        Ok(())
     }
 
     pub(crate) async fn finalize_start<R: Runtime>(
@@ -161,11 +177,15 @@ impl PluginsState {
         id: String,
         app_handle: &AppHandle<R>,
     ) -> anyhow::Result<()> {
-        ReconcileAction::SyncInPlace {
+        let maybe_event = ReconcileAction::SyncInPlace {
             plugin_id: id,
             patch: Box::new(|x| x.current_state = PluginCurrentState::Running {}),
         }
-        .apply(self, app_handle)
+        .apply(self)?;
+        if let Some(x) = maybe_event {
+            x.emit(&app_handle)?;
+        }
+        Ok(())
     }
 
     /// Runs a reconciliation against all plugins.  
@@ -301,11 +321,18 @@ impl PluginsState {
 
         // At this point we know which actions need to be taken
         for (id, action) in actions_map.into_iter() {
-            if let Err(e) = action.apply(self, app_handle) {
-                error!(
-                    "Failed to apply a plugin reconcile action for plugin {}: {}",
-                    id, e
-                )
+            let maybe_event = match action.apply(self) {
+                Ok(x) => x,
+                Err(e) => {
+                    error!(
+                        "Failed to apply a plugin reconcile action for plugin {}: {}",
+                        id, e
+                    );
+                    continue;
+                }
+            };
+            if let Some(e) = maybe_event {
+                e.emit(app_handle)?;
             }
         }
 
@@ -406,7 +433,6 @@ impl PluginState {
                 _ => {
                     let new_hash = desired_plugin_state.frontend_hash.clone();
                     let new_manifest = desired_plugin_state.manifest.clone();
-                    
                     Some(ReconcileAction::SyncInPlace { plugin_id, patch: Box::new(move |x| {
                         x.frontend_hash = new_hash.clone();
                         x.manifest = new_manifest.clone();
@@ -424,17 +450,16 @@ impl PluginState {
                     _ => {
                         let new_hash = desired_plugin_state.frontend_hash.clone();
                         let new_manifest = desired_plugin_state.manifest.clone();
-                        
                         Some(ReconcileAction::Restart { plugin_id, patch: Box::new(move |x| {
                                 x.frontend_hash = new_hash.clone();
                                 x.manifest = new_manifest.clone();
-                            }) 
+                            })
                         })
                     }
                 }
             }
             // Noop - already converging towards that state
-            (PluginCurrentState::Disabling {  }, PluginCurrentState::Disabled {  }) | 
+            (PluginCurrentState::Disabling {  }, PluginCurrentState::Disabled {  }) |
             (PluginCurrentState::Starting { .. } ,  PluginCurrentState::Running {  }) => None,
             // Running or stuck trying to run while trying to be stopped
             (PluginCurrentState::FailedToStart { .. } | PluginCurrentState::Running {  } | PluginCurrentState::Starting { .. }, PluginCurrentState::Disabled {  }) => {

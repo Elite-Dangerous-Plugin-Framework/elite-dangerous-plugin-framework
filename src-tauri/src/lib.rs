@@ -4,9 +4,9 @@ use std::{env, sync::Arc};
 
 use plugins::PluginsState;
 use tauri::{
+    Manager,
     menu::{MenuBuilder, MenuItem, MenuItemBuilder, SubmenuBuilder},
     tray::TrayIconBuilder,
-    Manager,
 };
 use tokio::sync::RwLock;
 use tracing::Instrument;
