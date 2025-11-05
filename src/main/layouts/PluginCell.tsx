@@ -21,11 +21,12 @@ function PluginPortal({ reference }: PluginPortalProps) {
 
   useEffect(() => {
     if (divRef.current && reference) {
-      divRef.current.append(reference);
+      console.log("pluginPortal", { reference });
+      divRef.current.appendChild(reference);
     }
   }, [reference]);
 
-  return <div ref={divRef}></div>;
+  return <div data-role="plugin_container" ref={divRef}></div>;
 }
 
 export default function PluginCell({ layout, editMode }: PluginCellProps) {
@@ -39,7 +40,7 @@ export default function PluginCell({ layout, editMode }: PluginCellProps) {
   const pluginState = usePluginState(layout.plugin_id);
   const borderColour =
     PluginStateUIData[pluginState?.current_state.type ?? "Disabled"].colour;
-
+  console.log({ name: layout.plugin_id, ref: pluginState?.currentUiState });
   return (
     <div
       style={{

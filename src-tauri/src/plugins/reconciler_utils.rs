@@ -91,6 +91,7 @@ impl fmt::Debug for ReconcileAction {
     }
 }
 
+#[derive(Debug, Clone)]
 pub(crate) struct EventEmit(String, serde_json::Value);
 
 impl EventEmit {
@@ -104,7 +105,7 @@ impl ReconcileAction {
     /// Applies the action.
     ///
     /// Responsible for modifying the PluginsState, modifying the HTTP Server config, and notifying to Frontend via an event that it should load/unload a plugin
-    #[instrument]
+    #[instrument(name = "ReconcileAction::apply")]
     pub(super) fn apply(
         self,
         plugins_states: &mut PluginsState,
@@ -247,12 +248,14 @@ impl ReconcileAction {
             }
         };
 
-        Ok(plugins_states.get_cloned(&targeted_id).map(|x| EventEmit(
+        Ok(plugins_states.get_cloned(&targeted_id).map(|x| {
+            EventEmit(
                 "core/plugins/update".into(),
                 json!({
                     "id": targeted_id,
                     "pluginState": x
                 }),
-            )))
+            )
+        }))
     }
 }

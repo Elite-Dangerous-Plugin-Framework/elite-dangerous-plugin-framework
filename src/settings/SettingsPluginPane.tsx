@@ -10,7 +10,6 @@ import z from "zod";
 import React from "react";
 import { StatusIndicator } from "./Settings";
 
-
 export interface SettingsPluginPaneProps {
   plugin: PluginState;
 }
@@ -37,21 +36,21 @@ function getDisplayVersion(plugin: PluginState) {
 type SettingsComponentLoadState =
   | { type: "Loading" }
   | {
-    type: "PluginNotFound";
-  }
+      type: "PluginNotFound";
+    }
   | {
-    type: "FailedAwaitImport";
-  }
+      type: "FailedAwaitImport";
+    }
   | {
-    type: "NoSettingsExported";
-  }
+      type: "NoSettingsExported";
+    }
   | {
-    type: "SettingsExportNotHTMLElement";
-  }
+      type: "SettingsExportNotHTMLElement";
+    }
   | {
-    type: "Registered";
-    registeredAs: string;
-  };
+      type: "Registered";
+      registeredAs: string;
+    };
 
 export function SettingsPluginPane({ plugin }: SettingsPluginPaneProps) {
   const pluginVersion = getDisplayVersion(plugin);
@@ -99,7 +98,6 @@ export function SettingsPluginPane({ plugin }: SettingsPluginPaneProps) {
       }
       // This essentially checks if the export is a class definition that inherits HTMLElement
 
-      console.log(typeof module.Settings);
       if (
         typeof module.Settings !== "function" ||
         !Object.prototype.isPrototypeOf.call(
@@ -111,8 +109,9 @@ export function SettingsPluginPane({ plugin }: SettingsPluginPaneProps) {
         return;
       }
 
-      let customElementID = `settings-${plugin.id}-${result.success ? result.hash : "no-hash"
-        }`;
+      let customElementID = `settings-${plugin.id}-${
+        result.success ? result.hash : "no-hash"
+      }`;
       if (!customElements.get(customElementID)) {
         customElements.define(customElementID, module.Settings);
       }
@@ -123,7 +122,7 @@ export function SettingsPluginPane({ plugin }: SettingsPluginPaneProps) {
     })();
   }, [plugin.id]);
 
-  const currentStateType = plugin.current_state.type
+  const currentStateType = plugin.current_state.type;
   return (
     <div className="flex flex-col p-2">
       <section
@@ -139,9 +138,7 @@ export function SettingsPluginPane({ plugin }: SettingsPluginPaneProps) {
             </span>
           </span>
           <h2 className=" inline-flex gap-2 items-baseline">
-            <StatusIndicator
-              state={plugin.current_state.type}
-            />
+            <StatusIndicator state={plugin.current_state.type} />
             <span title={plugin.id}>{getName(plugin)}</span> <span></span>
           </h2>
         </div>
@@ -164,12 +161,15 @@ export function SettingsPluginPane({ plugin }: SettingsPluginPaneProps) {
           <button
             id="plugin-start-stop"
             disabled={
-              currentStateType === "Starting" || currentStateType === "Disabling"
+              currentStateType === "Starting" ||
+              currentStateType === "Disabling"
             }
-            className={`rounded-lg p-2 bg-white/10 hover:bg-white/20 ${currentStateType === "Starting" || currentStateType === "Disabling"
-              ? "cursor-progress animate-pulse"
-              : "cursor-pointer"
-              } `}
+            className={`rounded-lg p-2 bg-white/10 hover:bg-white/20 ${
+              currentStateType === "Starting" ||
+              currentStateType === "Disabling"
+                ? "cursor-progress animate-pulse"
+                : "cursor-pointer"
+            } `}
           >
             <PluginStartStopButton
               className={`h-6 w-6 `}
@@ -212,14 +212,16 @@ export function SettingsPluginPane({ plugin }: SettingsPluginPaneProps) {
       </section>
 
       <hr className=" text-neutral-600 my-2" />
-      {
-        currentStateType === "FailedToStart" && <div className="text-red-400 p-4">
+      {currentStateType === "FailedToStart" && (
+        <div className="text-red-400 p-4">
           <h2>Failed to start plugin…</h2>
-          {
-            (((plugin.current_state as any).FailedToStart).reasons as string[]).map(e => <p key={e}>{e}</p>)
-          }
+          {(
+            (plugin.current_state as any).FailedToStart.reasons as string[]
+          ).map((e) => (
+            <p key={e}>{e}</p>
+          ))}
         </div>
-      }
+      )}
       <section className="" id="plugin_settings">
         {settingsLoadState.type === "Loading" && <p>Loading…</p>}
         {settingsLoadState.type === "FailedAwaitImport" && (

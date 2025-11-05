@@ -8,11 +8,13 @@ import DropTarget from "./DropTarget";
 export interface VerticalLayoutProps {
   layout: z.infer<typeof VerticalNodeZod>;
   editMode: boolean;
+  className?: string;
 }
 
 export default function VerticalLayout({
   layout,
   editMode,
+  className = "",
 }: VerticalLayoutProps) {
   const { active } = useDndContext();
 
@@ -21,7 +23,7 @@ export default function VerticalLayout({
       role="presentation"
       className={`flex flex-col  gap-1 ${
         editMode ? " border border-amber-700 rounded-lg mx-1" : ""
-      }`}
+      } ${className}`}
     >
       {editMode && (
         <legend className="text-xs text-amber-700 ml-1 italic w-fit">

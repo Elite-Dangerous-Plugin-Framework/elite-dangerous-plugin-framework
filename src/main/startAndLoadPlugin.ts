@@ -24,6 +24,7 @@ export async function startAndLoadPlugin(
     FinalizeStartPlugin,
   }: StartAndLoadPluginCommands
 ): Promise<undefined | z.infer<typeof CurrentUiStateZod>> {
+  console.trace("startAndLoad called");
   const result = await GetImportPath(pluginID);
   if (!result.success) {
     await StartPluginFailed(pluginID, [result.reason]);

@@ -164,9 +164,7 @@ export default class PluginsManager {
     this.#pluginStatePatchesTouchedTimeout = setTimeout(async () => {
       // if here, we drain the queue of events. We collect the plugins that have updated in the meantime
       // We could do some granular checking of which states were updated. But it is easier to just let the plugins reconcile themselves
-      console.error("awaiting lock");
       const unlock = await this.#pluginUpdateMutex.lock();
-      console.error("locked");
       try {
         const newState = Object.fromEntries(
           Object.entries(this.#pluginState).map(([k, v]) => [
@@ -200,7 +198,6 @@ export default class PluginsManager {
       } catch (err) {
         console.error({ err });
       } finally {
-        console.error("unlocking");
         unlock();
       }
 
@@ -209,6 +206,11 @@ export default class PluginsManager {
   }
   #pluginStatePatchesTouchedTimeout: number | undefined;
 
+  #destroyed = false;
+  get destroyed() {
+    return this.#destroyed;
+  }
+
   async destroy() {
     this.#destructorCallbacks.forEach((e) => e());
     const pluginDestructions = Object.values(this.#pluginState)
@@ -216,5 +218,6 @@ export default class PluginsManager {
       .filter((e) => e.type === "Running")
       .map((e) => e.contextDestruction() as Promise<void>);
     await Promise.all(pluginDestructions);
+    this.#destroyed = true;
   }
 }

@@ -37,6 +37,10 @@ export default class PluginReconcilerImpl implements PluginReconciler {
   public async reconcilePlugin(
     state: PluginStates[string]
   ): Promise<PluginStatesPatch[]> {
+    console.log({
+      ui: state.currentUiState.type,
+      main: state.current_state.type,
+    });
     if (state.currentUiState.type === "Missing") {
       switch (state.current_state.type) {
         case "Starting":
@@ -50,6 +54,7 @@ export default class PluginReconcilerImpl implements PluginReconciler {
               StartPluginFailed: startPluginFailed,
               FinalizeStartPlugin: finalizeStartPlugin,
             });
+            debugger;
             return result
               ? [
                   (fullState) => {
@@ -60,7 +65,6 @@ export default class PluginReconcilerImpl implements PluginReconciler {
                 ]
               : [];
           } catch (e) {
-            debugger;
             console.error(e);
             return [];
           }
@@ -91,7 +95,12 @@ export default class PluginReconcilerImpl implements PluginReconciler {
           if (!state.currentUiState.context.destroyed) {
             try {
               await state.currentUiState.contextDestruction();
-            } catch {}
+            } catch (err) {
+              console.warn(
+                "an error was emitted from a plugin during destruction",
+                { pluginID: state.id, err }
+              );
+            }
           }
           // At this point the Plugin Context is destroyed. If the destructor has failed, we blame the Plugin :)
           // anyhow, we are destroying the reference

@@ -40,7 +40,7 @@ export class PluginContext {
    *  **This is managed by EDPF (Plugins don't have to care about it)**
    */
   async #notifyDestroy() {
-    if (this.#shutdownListener) {
+    if (typeof this.#shutdownListener === "function") {
       await Promise.race([
         new Promise<void>((res) => setTimeout(() => res(), 1_000)),
         this.#shutdownListener(),
@@ -182,8 +182,9 @@ export class PluginContext {
     await ctx.#init();
     return {
       ctx,
-      notifyDestructor: ctx.#notifyDestroy,
-      notifySettingsChanged: ctx.#notifySettingsChanged,
+      notifyDestructor: async () => ctx.#notifyDestroy(),
+      notifySettingsChanged: (a: string, b: unknown) =>
+        ctx.#notifySettingsChanged(a, b),
     };
   }
   // called internally, uses the instanceID to get the pluginID and data

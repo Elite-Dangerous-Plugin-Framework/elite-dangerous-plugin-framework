@@ -34,8 +34,8 @@ pub(super) async fn spawn_reconciler_blocking(app_state: &AppHandle<Wry>) -> ! {
         {
             let state = app_state.state::<Arc<RwLock<PluginsState>>>();
             info!("Running Plugin reconciler…");
-            let mut state = state.write().await;
-            if let Err(e) = state.reconcile(app_state).await {
+            let mut state: tokio::sync::RwLockWriteGuard<'_, PluginsState> = state.write().await;
+            if let Err(e) = state.reconcile(&app_state).await {
                 error!("plugin state reconcile failed: {e}")
             }
         }
@@ -116,6 +116,7 @@ impl PluginsState {
     ) -> anyhow::Result<()> {
         let maybe_event = ReconcileAction::Stop { plugin_id: id }.apply(self)?;
         if let Some(x) = maybe_event {
+            tokio::time::sleep(Duration::from_millis(20)).await;
             x.emit(app_handle)?;
         }
         Ok(())
@@ -132,6 +133,7 @@ impl PluginsState {
         }
         .apply(self)?;
         if let Some(x) = maybe_event {
+            tokio::time::sleep(Duration::from_millis(20)).await;
             x.emit(app_handle)?;
         }
         Ok(())
@@ -144,6 +146,7 @@ impl PluginsState {
     ) -> anyhow::Result<()> {
         let maybe_event = ReconcileAction::Start { plugin_id: id }.apply(self)?;
         if let Some(x) = maybe_event {
+            tokio::time::sleep(Duration::from_millis(20)).await;
             x.emit(app_handle)?;
         }
         Ok(())
@@ -167,6 +170,7 @@ impl PluginsState {
         }
         .apply(self)?;
         if let Some(x) = maybe_event {
+            tokio::time::sleep(Duration::from_millis(20)).await;
             x.emit(app_handle)?;
         }
         Ok(())
@@ -183,6 +187,7 @@ impl PluginsState {
         }
         .apply(self)?;
         if let Some(x) = maybe_event {
+            tokio::time::sleep(Duration::from_millis(20)).await;
             x.emit(app_handle)?;
         }
         Ok(())
@@ -193,6 +198,7 @@ impl PluginsState {
     /// - fetch all user-provided and embedded plugins
     /// - look at the config to figure out which plugins are active
     /// - calls [PluginState::reconcile] for each plugin and notifies it if it should be started or not
+    #[instrument(skip(app_handle))]
     async fn reconcile(&mut self, app_handle: &AppHandle<Wry>) -> anyhow::Result<()> {
         let user_plugin_dir = app_handle
             .store("store.json")
@@ -319,21 +325,28 @@ impl PluginsState {
             );
         }
 
-        // At this point we know which actions need to be taken
-        for (id, action) in actions_map.into_iter() {
-            let maybe_event = match action.apply(self) {
-                Ok(x) => x,
-                Err(e) => {
-                    error!(
-                        "Failed to apply a plugin reconcile action for plugin {}: {}",
-                        id, e
-                    );
-                    continue;
+        let mut emits = Vec::new();
+        {
+            // At this point we know which actions need to be taken
+            for (id, action) in actions_map.into_iter() {
+                let maybe_event = match action.apply(self) {
+                    Ok(x) => x,
+                    Err(e) => {
+                        error!(
+                            "Failed to apply a plugin reconcile action for plugin {}: {}",
+                            id, e
+                        );
+                        continue;
+                    }
+                };
+                if let Some(e) = maybe_event {
+                    emits.push(e.clone());
                 }
-            };
-            if let Some(e) = maybe_event {
-                e.emit(app_handle)?;
             }
+        };
+
+        for e in emits {
+            e.emit(app_handle)?;
         }
 
         Ok(())
@@ -369,6 +382,7 @@ impl PluginState {
         self.plugin_dir.join("frontend")
     }
 
+    #[instrument(ret)]
     fn get_manifest(manifest_path: &PathBuf) -> Result<PluginManifest, String> {
         let reader = File::open(manifest_path).map_err(|x| {
             format!(

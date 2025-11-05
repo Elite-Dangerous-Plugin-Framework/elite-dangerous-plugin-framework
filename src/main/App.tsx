@@ -14,81 +14,13 @@ import Parkinglot from "./Parkinglot";
 import { getRootToken } from "../commands/getRootToken";
 import PluginReconcilerImpl from "./PluginReconciler";
 import syncMainLayout from "../commands/syncMainLayout";
+import {
+  makePluginIdsInParkingLot,
+  removeOldItemInChildren,
+  traverseNode,
+} from "./helpers";
 
-function traverseNode(
-  el: z.infer<typeof AnyNodeZod>,
-  containerId: string
-): z.infer<typeof AnyNodeZod> | undefined {
-  switch (el.type) {
-    case "PluginCell":
-      if (el.plugin_id === containerId) {
-        return el;
-      }
-      return undefined;
-    case "VerticalLayout":
-      if (el.identifier === containerId) {
-        return el;
-      }
-
-      return el.children
-        .map((e) => {
-          return traverseNode(e, containerId);
-        })
-        .find(Boolean);
-  }
-}
-
-function removeOldItemInChildren(
-  el: z.infer<typeof AnyNodeZod>,
-  containerId: string
-) {
-  if (el.type === "PluginCell") {
-    // plugin cells cant have children. Nothing we can do here. This needs to be done in the parent
-    return;
-  }
-  el.children = el.children.filter((e) => {
-    switch (e.type) {
-      case "PluginCell":
-        return e.plugin_id !== containerId || e.newElement;
-      case "VerticalLayout":
-        removeOldItemInChildren(e, containerId);
-        return e.identifier !== containerId || e.newElement;
-    }
-  });
-}
-
-// This function traverses all known plugins and returns the ones that are not found within the layout
-function makePluginIdsInParkingLot(
-  pluginIds: Record<
-    string,
-    z.infer<typeof PluginStateContainingCurrentStateZod>
-  >,
-  layout: z.infer<typeof PluginViewStructureZod> | undefined
-) {
-  if (typeof pluginIds === "undefined" || typeof layout === "undefined") {
-    return undefined;
-  }
-
-  function returnIdsForLayout(layout: z.infer<typeof AnyNodeZod>): string[] {
-    switch (layout.type) {
-      case "PluginCell":
-        return [layout.plugin_id];
-      case "VerticalLayout":
-        return layout.children.flatMap((e) => returnIdsForLayout(e));
-    }
-  }
-  // This is a lookup
-  const knownIds = Object.fromEntries(
-    returnIdsForLayout(layout.root).map((e) => [e, true])
-  );
-  const idsNotInLayout = Object.keys(pluginIds).filter(
-    (e) => !knownIds[e] && pluginIds[e]!.current_state.type !== "Disabled"
-  );
-
-  return idsNotInLayout;
-}
-
-function App() {
+export default function App() {
   const [appWin, setAppWin] = useState<Window>();
   const [isMaximized, setIsMaximized] = useState(false);
   const [isEditMode, setIsEditMode] = useState(false);
@@ -106,20 +38,27 @@ function App() {
     pluginState ?? {},
     layout
   );
-
   useEffect(() => {
     syncMainLayout().then((e) => setLayout(e));
 
-    if (!pluginManagerRef.current) {
+    let manager: PluginsManager | undefined;
+    if (!pluginManagerRef.current || pluginManagerRef.current.destroyed) {
+      console.info("plugin manager ref creating");
       getRootToken().then((rootToken) => {
         const reconciler = new PluginReconcilerImpl(rootToken);
-        const manager = new PluginsManager(reconciler);
+        manager = new PluginsManager(reconciler);
         manager.init(setPluginState);
+        pluginManagerRef.current = manager;
       });
+    } else {
+      console.info("plugin manager ref already exists — not recreating");
     }
     return () => {
-      if (pluginManagerRef.current) {
-        pluginManagerRef.current.destroy();
+      if (manager) {
+        console.info("plugin manager ref destroying");
+        manager.destroy();
+      } else {
+        console.info("plugin manager doesnt exist");
       }
     };
   }, []);
@@ -141,6 +80,13 @@ function App() {
         isEditMode={isEditMode}
         toggleEditMode={() => setIsEditMode(!isEditMode)}
       />
+      <button
+        onClick={() => {
+          console.log({ pluginState, pluginManagerRef });
+        }}
+      >
+        print state
+      </button>
       <DndContext
         onDragStart={(ev) => {
           setCurrentDraggingItem(ev.active);
@@ -225,7 +171,11 @@ function App() {
       >
         <PluginStateCtx.Provider value={pluginState}>
           {layout ? (
-            <VerticalLayout layout={layout.root} editMode={isEditMode} />
+            <VerticalLayout
+              className=" overflow-y-scroll h-full flex-1"
+              layout={layout.root}
+              editMode={isEditMode}
+            />
           ) : (
             <p>Loading…</p>
           )}
@@ -259,5 +209,3 @@ function App() {
     </main>
   );
 }
-
-export default App;
