@@ -1,5 +1,5 @@
 import z from "zod";
-import { PluginContext } from "./PluginContext";
+import { PluginContextV1AlphaImpl } from "./PluginContext";
 import { CurrentUiStateZod } from "./PluginsManager";
 import type getImportPathForPlugin from "../commands/getImportPathForPlugin";
 import type startPluginFailed from "../commands/startPluginFailed";
@@ -24,7 +24,7 @@ export async function startAndLoadPlugin(
     FinalizeStartPlugin,
   }: StartAndLoadPluginCommands
 ): Promise<undefined | z.infer<typeof CurrentUiStateZod>> {
-  console.trace("startAndLoad called");
+  console.info("startAndLoad called");
   const result = await GetImportPath(pluginID);
   if (!result.success) {
     await StartPluginFailed(pluginID, [result.reason]);
@@ -86,8 +86,9 @@ export async function startAndLoadPlugin(
   }
 
   const { ctx, notifyDestructor, notifySettingsChanged } =
-    await PluginContext.create(
-      await GetInstanceByPluginId(pluginID, rootTokenRef)
+    await PluginContextV1AlphaImpl.create(
+      await GetInstanceByPluginId(pluginID, rootTokenRef),
+      result.import
     );
   try {
     item.initPlugin(ctx);

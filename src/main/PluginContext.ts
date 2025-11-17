@@ -2,13 +2,12 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import z from "zod";
 import { PluginStateZod } from "../types/PluginState";
+import {
+  JournalEventBatchV1Alpha,
+  PluginContextV1Alpha,
+} from "@elite-dangerous-plugin-framework/core";
 
-/**
- * This is the main object your Plugin interacts with EDPF
- *
- * You can subscribe to events, requests specific Procedures (e.g requesting entire current journal file) (based on what your permissions allow)
- */
-export class PluginContext {
+export class PluginContextV1AlphaImpl implements PluginContextV1Alpha {
   /**
    * # Please don't construct the plugin context yourself
    *
@@ -53,16 +52,10 @@ export class PluginContext {
   }
 
   #eventListenerDestructor: undefined | "awaitingResolve" | (() => void);
-  /**
-   * ## Used to receive Journal Events
-   *
-   * Pass a callback into this method. The Callback will be invoked each time a Journal Event is received.
-   *
-   * Note that EDPF does Event batching, meaining you receive a List of Events if they happen in very quick succession.
-   *
-   * Note this can only **be called once**.
-   */
-  public registerEventListener(callback: (todo: any[]) => void) {
+
+  public registerEventListener(
+    callback: (events: JournalEventBatchV1Alpha) => void
+  ) {
     if (this.#eventListenerDestructor) {
       throw new Error("Event Listener can only be registered once per Plugin");
     }
@@ -74,16 +67,7 @@ export class PluginContext {
   }
 
   #shutdownListener: undefined | (() => Promise<void>);
-  /**
-   * ## Used to block shutdown for cleanup tasks
-   *
-   * If your Plugin requires some form of cleanup / finalizing, register a shutdown listener here.
-   * When stopping a Plugin, the Context will **wait up to a second** for you to finish cleanup.
-   *
-   * Cleanup is considered finished **when the Promise returns**. The callback is invoked once only
-   *
-   * Note this can only **be called once**.
-   */
+
   public registerShutdownListener(callback: () => Promise<void>) {
     if (this.#shutdownListener) {
       throw new Error(
@@ -93,14 +77,6 @@ export class PluginContext {
     this.#shutdownListener = callback;
   }
 
-  /**
-   * ## Used to listen for Settings
-   *
-   * Any plugin may listen for its own and other plugins changing their settings
-   *
-   * Do note that only keys where the last segment start **Uppercase** will be propagated here, except if the setting key is from your own plugin
-   *
-   */
   public registerSettingsChangedListener(
     callback: (key: string, value: unknown) => void
   ) {
@@ -134,15 +110,11 @@ export class PluginContext {
     }
   }
 
-  /**
-   * ## Request a reread of the current Journal
-   *
-   * This will re-read all open Journals (one per CMDR), which should get the plugin up to speed on the current context / state.
-   */
-  public async rereadCurrentJournals() {
+  public async rereadCurrentJournals(): Promise<
+    Record<string, JournalEventBatchV1Alpha>
+  > {
     throw new Error("not implemented");
   }
-
   /**
    * ## Write a setting for this plugin
    *
@@ -177,8 +149,9 @@ export class PluginContext {
    * @param instanceID a "secret" generated at runtime by EDPF that the Plugin Context uses to verify it was created from EDPF and not from a plugin.
    * The instanceID also acts as Pointer to the Plugin State, which means we can get the Plugin ID that way.
    */
-  public static async create(instanceID: string) {
-    const ctx = new PluginContext(instanceID);
+  public static async create(instanceID: string, importPath: string) {
+    const ctx = new PluginContextV1AlphaImpl(instanceID);
+    ctx.#assetsBase = importPath.substring(0, importPath.lastIndexOf("/") + 1);
     await ctx.#init();
     return {
       ctx,
@@ -200,5 +173,9 @@ export class PluginContext {
       throw new Error("Failed to get Plugin from the Instance ID");
     }
     this.#pluginID = response.data.id;
+  }
+  #assetsBase = "";
+  get assetsBase(): string {
+    return this.#assetsBase;
   }
 }

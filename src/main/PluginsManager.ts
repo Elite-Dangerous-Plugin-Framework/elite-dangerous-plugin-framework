@@ -2,7 +2,7 @@ import z from "zod";
 import { listen } from "@tauri-apps/api/event";
 import { PluginStateZod } from "../types/PluginState";
 import { getAllPluginStates } from "../commands/getAllPluginStates";
-import { PluginContext } from "./PluginContext";
+import { PluginContextV1AlphaImpl } from "./PluginContext";
 import { PluginReconciler } from "./PluginReconciler";
 import { Mutex } from "@livekit/mutex";
 
@@ -71,7 +71,7 @@ export const CurrentUiStateZod = z.union([
     notifySettingsChanged: z.function({
       input: z.tuple([z.string(), z.string()]),
     }),
-    context: z.instanceof(PluginContext),
+    context: z.instanceof(PluginContextV1AlphaImpl),
   }),
   z.object({
     type: z.literal("Missing"),
@@ -202,7 +202,7 @@ export default class PluginsManager {
       }
 
       this.#pluginStateUpdatedCb(this.#pluginState);
-    }, 100);
+    }, 100) as any as number;
   }
   #pluginStatePatchesTouchedTimeout: number | undefined;
 

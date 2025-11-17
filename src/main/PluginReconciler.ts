@@ -37,7 +37,7 @@ export default class PluginReconcilerImpl implements PluginReconciler {
   public async reconcilePlugin(
     state: PluginStates[string]
   ): Promise<PluginStatesPatch[]> {
-    console.log({
+    console.log(state.id, {
       ui: state.currentUiState.type,
       main: state.current_state.type,
     });
@@ -105,6 +105,7 @@ export default class PluginReconcilerImpl implements PluginReconciler {
           // At this point the Plugin Context is destroyed. If the destructor has failed, we blame the Plugin :)
           // anyhow, we are destroying the reference
           state.currentUiState.ref.remove();
+
           if (
             state.current_state.type === "Disabled" ||
             state.current_state.type === "Disabling"

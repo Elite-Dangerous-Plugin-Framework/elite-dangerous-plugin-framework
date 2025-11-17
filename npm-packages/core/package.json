@@ -20,8 +20,5 @@
   "devDependencies": {
     "@types/node": "^24.4.0",
     "typescript": "^5.5.0"
-  },
-  "dependencies": {
-    "@elite-dangerous-plugin-framework/journal": "^0.20250914.0"
   }
 }

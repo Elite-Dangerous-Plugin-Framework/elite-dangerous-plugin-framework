@@ -22,7 +22,20 @@ function PluginPortal({ reference }: PluginPortalProps) {
   useEffect(() => {
     if (divRef.current && reference) {
       console.log("pluginPortal", { reference });
-      divRef.current.appendChild(reference);
+      if (!divRef.current.shadowRoot) {
+        divRef.current.attachShadow({ mode: "open" });
+      }
+      if (!divRef.current.shadowRoot) {
+        throw new Error("illogical error: shadow Root is unset after creating");
+      }
+      divRef.current.shadowRoot.appendChild(reference);
+    }
+    if (divRef.current && divRef.current.shadowRoot) {
+      for (const child of divRef.current.shadowRoot.children) {
+        if (child !== reference) {
+          child.remove();
+        }
+      }
     }
   }, [reference]);
 
@@ -40,7 +53,6 @@ export default function PluginCell({ layout, editMode }: PluginCellProps) {
   const pluginState = usePluginState(layout.plugin_id);
   const borderColour =
     PluginStateUIData[pluginState?.current_state.type ?? "Disabled"].colour;
-  console.log({ name: layout.plugin_id, ref: pluginState?.currentUiState });
   return (
     <div
       style={{
