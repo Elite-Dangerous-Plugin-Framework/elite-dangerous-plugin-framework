@@ -9,9 +9,11 @@ use std::{
 
 use anyhow::anyhow;
 use bimap::BiHashMap;
+use chrono::{TimeDelta, Utc};
 use dirs::data_local_dir;
 use get_dir_hash::Options;
 use itertools::Itertools;
+use notify::{RecommendedWatcher, Watcher};
 use plugin_manifest::PluginManifest;
 use plugin_settings::PluginSettings;
 use reconciler_utils::ReconcileAction;
@@ -20,8 +22,8 @@ use serde::Serialize;
 use serde_json::{json, Value};
 use tauri::{AppHandle, Manager, Runtime, Wry};
 use tauri_plugin_store::StoreExt;
-use tokio::{sync::RwLock, time::sleep};
-use tracing::{debug, error, info, instrument};
+use tokio::sync::RwLock;
+use tracing::{debug, error, info, instrument, warn};
 
 pub(crate) mod commands;
 pub(crate) mod frontend_server;
@@ -30,17 +32,119 @@ pub(crate) mod plugin_settings;
 mod reconciler_utils;
 //
 pub(super) async fn spawn_reconciler_blocking(app_state: &AppHandle<Wry>) -> ! {
+    let (tx, rx) = std::sync::mpsc::channel();
+
+    let user_plugin_dir = app_state
+        .store("store.json")
+        .map_err(|x| anyhow!("couldn't get store: {x}"))
+        .unwrap()
+        .get("plugin_dir")
+        .and_then(|x| {
+            let x = x.to_string();
+            PathBuf::from_str(&x).ok()
+        })
+        .unwrap_or(data_local_dir().unwrap().join("edpf-plugins"));
+    let moved_user_plugin_dir = user_plugin_dir.clone();
+    let mut watcher = RecommendedWatcher::new(
+        move |res: Result<notify::Event, notify::Error>| match res {
+            Ok(ev) => {
+                let has_reason_to_update = match ev.kind {
+                    notify::EventKind::Create(_)
+                    | notify::EventKind::Modify(_)
+                    | notify::EventKind::Remove(_) => {
+                        matches_relevant_files(&ev.paths, &moved_user_plugin_dir)
+                    }
+                    _ => false,
+                };
+                if !has_reason_to_update {
+                    return;
+                }
+
+                tx.send(has_reason_to_update).unwrap()
+            }
+            Err(_) => {
+                warn!("rx error while using plugin dir listener. ignoring")
+            }
+        },
+        Default::default(),
+    )
+    .unwrap();
+    {
+        let state = app_state.state::<Arc<RwLock<PluginsState>>>();
+        info!("Running Plugin reconciler…");
+        let mut state: tokio::sync::RwLockWriteGuard<'_, PluginsState> = state.write().await;
+        if let Err(e) = state.reconcile(app_state).await {
+            error!("plugin state reconcile failed: {e}")
+        }
+    }
+
+    watcher
+        .watch(&user_plugin_dir, notify::RecursiveMode::Recursive)
+        .unwrap();
+
+    let mut last_reconciled = Utc::now();
+
     loop {
         {
+            let trigger_reconcile = rx.recv_timeout(Duration::from_secs(30)).unwrap_or(true);
+            if !trigger_reconcile || Utc::now() - last_reconciled < TimeDelta::seconds(1) {
+                // We debounce events here
+                continue;
+            }
+            last_reconciled = Utc::now();
             let state = app_state.state::<Arc<RwLock<PluginsState>>>();
             info!("Running Plugin reconciler…");
             let mut state: tokio::sync::RwLockWriteGuard<'_, PluginsState> = state.write().await;
-            if let Err(e) = state.reconcile(&app_state).await {
+            if let Err(e) = state.reconcile(app_state).await {
                 error!("plugin state reconcile failed: {e}")
             }
         }
-        sleep(Duration::from_secs(30)).await;
     }
+}
+
+/// Returns true if any of the paths matches:
+/// 1. $base/*/manifest.json
+/// 2. $base/*/frontend/**
+fn matches_relevant_files(paths: &[PathBuf], base: &Path) -> bool {
+    paths.iter().any(|p| {
+        // Must start with the base directory
+        if !p.starts_with(base) {
+            return false;
+        }
+
+        // Get the path components *after* the base
+        let mut comps = match p.strip_prefix(base) {
+            Ok(x) => x,
+            Err(_) => return false,
+        }
+        .components()
+        .peekable();
+
+        // Must have at least one component after base
+        match comps.next() {
+            Some(_) => {}
+            None => return false,
+        };
+
+        // --- Pattern 1: $path/*/manifest.json ---
+        if comps.clone().count() == 1 {
+            if let Some(last) = comps.peek() {
+                if last.as_os_str() == "manifest.json" {
+                    return true;
+                }
+            }
+        }
+
+        // --- Pattern 2: $path/*/frontend/** ---
+        if let Some(first_after) = comps.peek() {
+            if first_after.as_os_str() == "frontend" {
+                // Anything under frontend/, including nested directories, matches
+                return true;
+            }
+        }
+
+        false
+    })
 }
 
 #[derive(Debug, Serialize, Clone)]

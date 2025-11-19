@@ -3,7 +3,7 @@ import { listen } from "@tauri-apps/api/event";
 import z from "zod";
 import { PluginStateZod } from "../types/PluginState";
 import {
-  JournalEventBatchV1Alpha,
+  JournalEventItemV1Alpha,
   PluginContextV1Alpha,
 } from "@elite-dangerous-plugin-framework/core";
 
@@ -54,13 +54,13 @@ export class PluginContextV1AlphaImpl implements PluginContextV1Alpha {
   #eventListenerDestructor: undefined | "awaitingResolve" | (() => void);
 
   public registerEventListener(
-    callback: (events: JournalEventBatchV1Alpha) => void
+    callback: (events: JournalEventItemV1Alpha[]) => void
   ) {
     if (this.#eventListenerDestructor) {
       throw new Error("Event Listener can only be registered once per Plugin");
     }
-    const unlisten = listen("core/journal/eventBatch", (ev) => {
-      callback(ev as any);
+    const unlisten = listen("journal_events", (ev) => {
+      callback(ev.payload as any);
     });
     this.#eventListenerDestructor = "awaitingResolve";
     unlisten.then((e) => (this.#eventListenerDestructor = e));
@@ -111,7 +111,7 @@ export class PluginContextV1AlphaImpl implements PluginContextV1Alpha {
   }
 
   public async rereadCurrentJournals(): Promise<
-    Record<string, JournalEventBatchV1Alpha>
+    Record<string, JournalEventItemV1Alpha[]>
   > {
     throw new Error("not implemented");
   }

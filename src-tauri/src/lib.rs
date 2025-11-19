@@ -9,7 +9,8 @@ use tauri::{
     Manager,
 };
 use tokio::sync::RwLock;
-use tracing::Instrument;
+use tracing::{instrument::WithSubscriber, Instrument};
+use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt, EnvFilter, Layer};
 
 // Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
 #[tauri::command]
@@ -20,13 +21,11 @@ fn greet(name: &str) -> String {
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     // This should be called as early in the execution of the app as possible
-    #[cfg(debug_assertions)] // only enable instrumentation in development builds
-    let devtools = tauri_plugin_devtools::init();
 
     let mut builder = tauri::Builder::default();
     #[cfg(debug_assertions)]
     {
-        builder = builder.plugin(devtools);
+        builder = builder.plugin(tauri_plugin_devtools::init());
     };
     builder
         .plugin(tauri_plugin_store::Builder::new().build())

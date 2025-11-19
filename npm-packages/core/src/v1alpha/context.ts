@@ -1,4 +1,4 @@
-import type { JournalEventBatchV1Alpha } from "./journalEvent.js";
+import type { JournalEventItemV1Alpha } from "./journalEvent.js";
 
 /**
  * This is the main object your Plugin interacts with EDPF
@@ -16,7 +16,7 @@ export interface PluginContextV1Alpha {
    * Note this can only **be called once**.
    */
   registerEventListener(
-    callback: (events: JournalEventBatchV1Alpha) => void
+    callback: (events: JournalEventItemV1Alpha[]) => void
   ): void;
 
   /**
@@ -52,7 +52,7 @@ export interface PluginContextV1Alpha {
    *
    * @returns a mapping containing CMDR Names as the Key and the entire file's events until this point in time within the Batch.
    */
-  rereadCurrentJournals(): Promise<Record<string, JournalEventBatchV1Alpha>>;
+  rereadCurrentJournals(): Promise<Record<string, JournalEventItemV1Alpha[]>>;
 
   /**
    * ## Write a setting for this plugin

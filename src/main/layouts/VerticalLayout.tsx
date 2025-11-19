@@ -21,8 +21,8 @@ export default function VerticalLayout({
   return (
     <fieldset
       role="presentation"
-      className={`flex flex-col  gap-1 ${
-        editMode ? " border border-amber-700 rounded-lg mx-1" : ""
+      className={`flex flex-col w-full items-stretch gap-1 ${
+        editMode ? " border border-amber-700 rounded-lg px-1" : ""
       } ${className}`}
     >
       {editMode && (

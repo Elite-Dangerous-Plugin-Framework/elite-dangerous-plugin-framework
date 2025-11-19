@@ -11,8 +11,11 @@ use std::{
     time::Duration,
 };
 use tauri::{AppHandle, Emitter, Wry};
-use tokio::{sync::RwLock, time::sleep};
-use tracing::{Instrument, error, info, info_span, warn};
+use tokio::{
+    sync::{mpsc, RwLock},
+    time::sleep,
+};
+use tracing::{error, info, info_span, warn, Instrument};
 
 pub(super) async fn event_watchdog(app_handle: AppHandle<Wry>) -> ! {
     // We spawn a background thread that is responsible to listen for changes to the journal directory.
@@ -82,6 +85,68 @@ pub(super) async fn event_watchdog(app_handle: AppHandle<Wry>) -> ! {
                 let app_handle = app_handle;
                 let cmdr = cmdr.clone();
                 let mut reader = reader;
+                let (events_tx, mut events_rx) = mpsc::channel::<LogEventWithContext>(128);
+
+                // This function 
+                tauri::async_runtime::spawn(async move {
+                    let mut buffer = Vec::new();
+                    loop {
+                        let first = match events_rx.recv().await {
+                            None => break, // channel closed
+                            Some(ev) => ev,
+                        };
+                        buffer.push(first);
+
+                        // leading delay is how long we wait after the first, and subsequent events came in
+                        let leading_delay = Duration::from_millis(100);
+                        // the upper limit per batch. If a batch was started, it will collect for at most 500ms before emitting.
+                        let max_delay = Duration::from_millis(500);   
+                        let leading_timer = sleep(leading_delay);
+                        let max_timer = sleep(max_delay);
+                        tokio::pin!(leading_timer);
+                        tokio::pin!(max_timer);
+
+                        loop {
+                            tokio::select! {
+                                biased;
+
+                                maybe_ev = events_rx.recv() => {
+                                    match maybe_ev {
+                                        Some(ev) => {
+                                            buffer.push(ev);
+                                            leading_timer.as_mut().reset(tokio::time::Instant::now() + leading_delay);
+                                        }
+                                        None => {
+                                            // channel closed
+                                            break;
+                                        }
+                                    }
+                                }
+
+                                // we spent 100ms after the last event. Time to flush
+                                _ = &mut leading_timer => {
+                                    break
+                                }
+
+                                // we spent 0.5s - we flush, even if we are still in an event stream
+                                _ = &mut max_timer => {
+                                    break
+                                }
+                            }
+                        }
+
+                        if buffer.is_empty() {
+                            continue;
+                        }
+
+                        if let Err(e) = app_handle.emit("journal_events", &buffer) {
+                            warn!("failed to emit journal_events message: {}", e);
+                        } else {
+                            info!("Pushed {} journal events.", buffer.len())
+                        }
+                        buffer.clear();
+                    }
+                });
 
                 loop {
                     match reader.next().await {
@@ -106,18 +171,13 @@ pub(super) async fn event_watchdog(app_handle: AppHandle<Wry>) -> ! {
                                 }
                             },
                             Ok(x) => {
-                                if let Err(e) = app_handle.emit(
-                                    "journal_events",
-                                    vec![LogEventWithContext {
-                                        log_event: x,
-                                        source: file_clone.clone(),
-                                        cmdr: cmdr.clone(),
-                                    }],
-                                ) {
-                                    warn!(
-                                        "failed to emit journal_events message: {}",
-                                        e
-                                    );
+                                let ev = LogEventWithContext {
+                                    event: serde_json::to_string(&x).unwrap(),
+                                    source: file_clone.clone(),
+                                    cmdr: cmdr.clone(),
+                                };
+                                if let Err(e) = events_tx.send(ev).await {
+                                    warn!("failed to send event to debouncer for cmdr {}: {}", cmdr, e);
                                 }
                             },
                         },
@@ -182,7 +242,8 @@ fn get_last_event_ts_and_name_from_log(
 /// An "enhanced" Log Entry containing where that log entry is from (which file), and who it belongs to
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub(crate) struct LogEventWithContext {
-    pub(crate) log_event: serde_json::Value,
+    // contains a stringified JSON
+    pub(crate) event: String,
     pub(crate) source: PathBuf,
     pub(crate) cmdr: String,
 }

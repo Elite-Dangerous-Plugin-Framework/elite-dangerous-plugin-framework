@@ -39,11 +39,17 @@ function PluginPortal({ reference }: PluginPortalProps) {
     }
   }, [reference]);
 
-  return <div data-role="plugin_container" ref={divRef}></div>;
+  return (
+    <div
+      data-role="plugin_container"
+      className="w-full h-full "
+      ref={divRef}
+    ></div>
+  );
 }
 
 export default function PluginCell({ layout, editMode }: PluginCellProps) {
-  const { max_height, min_height, min_width, max_width } = layout.meta;
+  //const { max_height, min_height, min_width, max_width } = layout.meta;
 
   const { attributes, listeners, setNodeRef, active } = useDraggable({
     id: layout.plugin_id,
@@ -56,19 +62,23 @@ export default function PluginCell({ layout, editMode }: PluginCellProps) {
   return (
     <div
       style={{
-        minWidth: min_width ?? undefined,
-        maxWidth: max_width ?? undefined,
-        minHeight: min_height ?? undefined,
-        maxHeight: max_height ?? undefined,
+        //minWidth: min_width ?? undefined,
+        //maxWidth: max_width ?? undefined,
+        //minHeight: min_height ?? undefined,
+        //maxHeight: max_height ?? undefined,
         borderColor: borderColour as any,
       }}
       className={`${
-        editMode ? "rounded-lg mx-1 mt-1 border-1  min-h-12" : ""
-      } relative ${
+        editMode ? "relative rounded-lg mx-1 mt-1 border-1  min-h-12" : ""
+      } w-full ${
         active?.id === layout.plugin_id ? "animate-pulse opacity-15" : ""
       }`}
     >
-      <div className={`${editMode ? "blur-xs pointer-events-none" : ""}`}>
+      <div
+        className={`${
+          editMode ? "blur-xs pointer-events-none" : "w-full text-sm"
+        }`}
+      >
         <PluginPortal
           reference={
             pluginState?.currentUiState.type === "Running"
