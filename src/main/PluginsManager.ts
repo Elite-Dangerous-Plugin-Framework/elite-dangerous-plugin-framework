@@ -1,10 +1,11 @@
 import z from "zod";
 import { listen } from "@tauri-apps/api/event";
 import { PluginStateZod } from "../types/PluginState";
-import { getAllPluginStates } from "../commands/getAllPluginStates";
 import { PluginContextV1AlphaImpl } from "./PluginContext";
 import { PluginReconciler } from "./PluginReconciler";
 import { Mutex } from "@livekit/mutex";
+import { CommandWrapper } from "../commands/commandWrapper";
+import { PluginViewStructureZod } from "./layouts/types";
 
 function equatePluginStates(
   a: undefined | PluginStates[string],
@@ -68,9 +69,6 @@ export const CurrentUiStateZod = z.union([
       input: z.tuple([]),
     }),
     hash: z.string(),
-    notifySettingsChanged: z.function({
-      input: z.tuple([z.string(), z.string()]),
-    }),
     context: z.instanceof(PluginContextV1AlphaImpl),
   }),
   z.object({
@@ -91,6 +89,13 @@ export type PluginStates = Record<
 export type PluginStatesPatch = (state: PluginStates) => void;
 
 export default class PluginsManager {
+  async syncLayout(maybeNewLayout?: undefined | z.infer<typeof PluginViewStructureZod>) {
+    console.log("sync layout")
+    return await this.#commands.syncMainLayout(maybeNewLayout)
+  }
+  async openSettings() {
+    this.#commands.openSettings()
+  }
   #destructorCallbacks: (() => void)[] = [];
   #pluginState: Record<
     string,
@@ -105,12 +110,20 @@ export default class PluginsManager {
    */
   #pluginStatePatches: ((state: PluginStates) => void)[] = [];
   #pluginUpdateMutex = new Mutex();
-  #pluginStateUpdatedCb: PluginStatesPatch = (_: PluginStates) => {};
+  #pluginStateUpdatedCb: PluginStatesPatch = (_: PluginStates) => { };
+  #commands: CommandWrapper;
 
-  constructor(private reconciler: PluginReconciler) {}
+  constructor(commands: CommandWrapper, private reconciler: PluginReconciler) {
+    this.#commands = commands
+  }
 
   async init(updatePluginState: (newState: PluginStates) => void) {
-    const changeSet = Object.entries(await getAllPluginStates()).map(
+    const resp = await this.#commands.fetchAllPlugins()
+    if (!resp.success) {
+      throw new Error("failed to fetch all plugins: " + resp.reason)
+    }
+
+    const changeSet = Object.entries(resp.data).map(
       ([k, v]) => [k, { ...v, currentUiState: { type: "Missing" } }] as const
     );
 

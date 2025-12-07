@@ -1,38 +1,60 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { SettingsMainNoneSelected } from "./SettingsCore";
 import { PluginState } from "../types/PluginState";
 import { SettingsPluginPane } from "./SettingsPluginPane";
 import { listen } from "@tauri-apps/api/event";
-import { getAllPluginStates } from "../commands/getAllPluginStates";
 import { PluginCurrentStateKeys } from "../types/PluginCurrentState";
 import { countPluginStates, PluginStateUIData } from "./utils";
 import { ZondiconsFolder } from "../icons/pluginType";
 import { invoke } from "@tauri-apps/api/core";
+import { CommandWrapper } from "../commands/commandWrapper";
+import { getRootToken } from "../commands/getRootToken";
 
 export default function Settings() {
   const [pluginStates, setPluginStates] =
     useState<(PluginState & { id: string })[]>();
   const [activeId, setActiveId] = useState<string>();
+  const commandWrapperRef = useRef<CommandWrapper>();
 
   useEffect(() => {
-    const updateUnlisten = listen("core/plugins/update", (ev) => {
-      (async () => {
-        const result = Object.entries(await getAllPluginStates())
-          .map(([id, v]) => ({ ...v, id }))
-          .sort((a, b) => a.id.localeCompare(b.id));
-        setPluginStates(result);
-      })();
+    if (!commandWrapperRef.current) {
+      getRootToken().then(e => {
+        commandWrapperRef.current = new CommandWrapper(e);
+
+      })
+
+    }
+  }, [])
+
+
+
+  useEffect(() => {
+    const updateUnlisten = listen("core/plugins/update", async () => {
+      if (!commandWrapperRef.current) { return }
+      const p = await commandWrapperRef.current?.fetchAllPlugins()
+      if (!p.success) {
+        throw new Error("failed to fetch all plugins: " + p.reason)
+      }
+      const result = Object.entries(p.data)
+        .map(([id, v]) => ({ ...v, id }))
+        .sort((a, b) => a.id.localeCompare(b.id));
+      setPluginStates(result);
     });
 
     return () => {
       updateUnlisten.then((e) => e());
     };
-  }, []);
+  }, [commandWrapperRef]);
 
   useEffect(() => {
     (async () => {
-      const result = Object.entries(await getAllPluginStates())
+      if (!commandWrapperRef.current) { return }
+      const p = await commandWrapperRef.current?.fetchAllPlugins()
+      if (!p.success) {
+        throw new Error("failed to fetch all plugins: " + p.reason)
+      }
+      const result = Object.entries(p.data)
         .map(([id, v]) => ({ ...v, id }))
         .sort((a, b) => a.id.localeCompare(b.id));
       setPluginStates(result);
@@ -41,7 +63,7 @@ export default function Settings() {
     return () => {
       // Cleanup
     };
-  }, []);
+  }, [commandWrapperRef]);
 
   return (
     <main className="min-h-[100vh] bg-neutral-900 flex flex-row text-white select-none">
@@ -133,9 +155,8 @@ function SettingsSidebarPlugin({
           ? PluginStateUIData[currentStateType].colour + "40"
           : "unset",
       }}
-      className={`inline-flex items-center gap-1 flex-row w-full p-2 text-xs cursor-pointer hover:bg-white/10 ${
-        selected ? " underline" : ""
-      }`}
+      className={`inline-flex items-center gap-1 flex-row w-full p-2 text-xs cursor-pointer hover:bg-white/10 ${selected ? " underline" : ""
+        }`}
     >
       <StatusIndicator state={currentStateType} />
       <p className=" inline-flex justify-baseline items-center gap-1">{name}</p>

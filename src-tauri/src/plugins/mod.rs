@@ -1,5 +1,6 @@
 use std::{
     collections::{HashMap, HashSet},
+    fmt::Debug,
     fs::File,
     path::{Path, PathBuf},
     str::FromStr,
@@ -7,15 +8,18 @@ use std::{
     time::Duration,
 };
 
+use aes_gcm::Aes128Gcm;
 use anyhow::anyhow;
+use base64::{prelude::BASE64_STANDARD_NO_PAD, Engine};
 use bimap::BiHashMap;
 use chrono::{TimeDelta, Utc};
 use dirs::data_local_dir;
+use generic_plugin_settings::GenericPluginSettings;
 use get_dir_hash::Options;
 use itertools::Itertools;
 use notify::{RecommendedWatcher, Watcher};
 use plugin_manifest::PluginManifest;
-use plugin_settings::PluginSettings;
+use rand::RngCore;
 use reconciler_utils::ReconcileAction;
 use schemars::JsonSchema;
 use serde::Serialize;
@@ -26,12 +30,15 @@ use tokio::sync::RwLock;
 use tracing::{debug, error, info, instrument, warn};
 
 pub(crate) mod commands;
+pub(crate) mod commands_armor;
 pub(crate) mod frontend_server;
+pub(crate) mod generic_plugin_settings;
 pub(crate) mod plugin_manifest;
 pub(crate) mod plugin_settings;
 mod reconciler_utils;
-//
-pub(super) async fn spawn_reconciler_blocking(app_state: &AppHandle<Wry>) -> ! {
+
+#[instrument(skip(app_state))]
+pub(super) async fn spawn_reconciler_blocking(app_state: &AppHandle<Wry>) -> () {
     let (tx, rx) = std::sync::mpsc::channel();
 
     let user_plugin_dir = app_state
@@ -126,7 +133,7 @@ fn matches_relevant_files(paths: &[PathBuf], base: &Path) -> bool {
             None => return false,
         };
 
-        // --- Pattern 1: $path/*/manifest.json ---
+        // Match on $path/*/manifest.json
         if comps.clone().count() == 1 {
             if let Some(last) = comps.peek() {
                 if last.as_os_str() == "manifest.json" {
@@ -135,7 +142,7 @@ fn matches_relevant_files(paths: &[PathBuf], base: &Path) -> bool {
             }
         }
 
-        // --- Pattern 2: $path/*/frontend/** ---
+        // Match on $path/*/frontend/**
         if let Some(first_after) = comps.peek() {
             if first_after.as_os_str() == "frontend" {
                 // Anything under frontend/, including nested directories, matches
@@ -147,72 +154,112 @@ fn matches_relevant_files(paths: &[PathBuf], base: &Path) -> bool {
     })
 }
 
-#[derive(Debug, Serialize, Clone)]
+#[derive(Serialize, Clone)]
 pub(crate) struct PluginsState {
     plugin_states: HashMap<String, PluginState>,
-    /// Contains a runtime generated hash (a secret, essentially), mapped to a plugin ID
-    /// This is used by the Plugin Context in the Frontend during creation. Creating is rejected if this Token is incorrect
-    #[serde(skip_serializing)]
-    runtime_token_lookup: BiHashMap<String, String>,
-    /// This is the "admin" token, if you want. It is needed to get fetch [Self::runtime_token_lookup]'s tokens, which makes it the required to spawn Plugin instances
+    /// This is the "admin" token, if you want. It's an AES-128 GCM Cipher. We pass this cipher to the main and settings windows **before** the contexts are tainted by importing plugins.
     ///
-    /// The only way to get this Token is by calling the [get_root_token_once] command. As the name implies, this can be only called once. Subsequent requests are rejected.
+    /// Commands and Events are encrypted with this Cipher. This way, Plugins cannot just invoke window.__TAURI or import Tauri and invoke commands at will and must go through the Facade provided
+    /// to them by EDPF.
+    ///
+    /// The only way to get this Token is by calling the [get_root_token_once] command. As the name implies, this can be only called once **PER WINDOW LIFECYCLE**. Subsequent requests are rejected.
+    /// The backend listens for Webview Reloads and resets the lock if a Reload is completed. This is tracked in [PluginsState::allow_request_root_key_main] and [PluginsState::allow_request_root_key_settings] respectively.
+    ///
     /// Because the main window is called before any plugins, it can acquire it first. If a Plugin somehow manages to call [get_root_token_once], that call is rejected.
     #[serde(skip_serializing)]
-    root_token: String,
+    root_token: [u8; 16],
+    /// intialized to false. When we receive the signal that the main window is ready, this is set to `true`. The main window may then invoke [get_root_token_once] to get the [PluginsState::root_token], which it needs to decrypt events and invoke commands.
     #[serde(skip_serializing)]
-    root_token_requested: bool,
+    pub(super) allow_request_root_key_main: bool,
+    /// see [PluginsState::allow_request_root_key_main] - the difference is that this concerns the settings Window
+    #[serde(skip_serializing)]
+    pub(super) allow_request_root_key_settings: bool,
 }
 
+impl Debug for PluginsState {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("PluginsState")
+            .field("plugin_states", &self.plugin_states)
+            .field(
+                "allow_request_root_key_main",
+                &self.allow_request_root_key_main,
+            )
+            .field(
+                "allow_request_root_key_settings",
+                &self.allow_request_root_key_settings,
+            )
+            .finish()
+    }
+}
+
+/// This is called at the start of a window's lifecycle.
+/// When doing so, the caller gets back a 128bit AES GCM key, commonly referred to as the "root token" in the rest of the system.
+/// Tauri events are encrypted with this root token, and most commands require the payload to also be encrypted this way.
+///
+/// The idea here is that the respective Windows (`main` and `settings`) call this at the very start, before they have started loading plugins.
+/// They can fetch the root token and store it internally, outside of the plugin's reach.
+///
+/// If a rogue plugin would try to request this token afterwards, it gets rejected, as loading this token is only allowed once per Webview Load.
+/// if the window gets unloaded and reloaded, a Tauri-internal event is emitted. After the reload, we can assume that the context is untainted again, which is why we set back [PluginsState::allow_request_root_key_main] and [PluginsState::allow_request_root_key_settings].
+///
 #[tauri::command]
 pub(crate) async fn get_root_token_once<R: Runtime>(
     app: tauri::AppHandle<R>,
+    window: tauri::Window,
 ) -> Result<Value, String> {
     let state = app.state::<Arc<RwLock<PluginsState>>>();
 
     let mut data = state.write().await;
 
-    if data.root_token_requested {
-        #[cfg(not(debug_assertions))]
+    let is_main = match window.label() {
+        "main" => true,
+        "settings" => false,
+        _ => {
+            return Ok(json!({"success": false, "reason": "CALLED_FROM_INVALID_WINDOW"}));
+        }
+    };
+
+    let can_request = match is_main {
+        true => data.allow_request_root_key_main,
+        false => data.allow_request_root_key_settings,
+    };
+
+    if !can_request {
         // During dev we might reload the window. To not cause any annoyances and having the fully restart the app, we ignore the case that
         // the root token was already requested.
         return Ok(json!({"success": false, "reason": "TOKEN_ALREADY_REQUESTED"}));
     }
-    data.root_token_requested = true;
-    Ok(json!({"success": true, "data": data.root_token.clone()}))
+
+    match is_main {
+        true => data.allow_request_root_key_main = false,
+        false => data.allow_request_root_key_settings = false,
+    }
+
+    let encoded_token = BASE64_STANDARD_NO_PAD.encode(&data.root_token);
+    Ok(json!({"success": true, "data":  encoded_token}))
 }
 
 impl PluginsState {
     /// this just creates an empty hashmap. Use reconcile function to sync the states
     pub(crate) fn new() -> Self {
+        let mut root_token = [0u8; 16];
+        rand::rng().fill_bytes(&mut root_token);
+
         Self {
             plugin_states: HashMap::new(),
-            runtime_token_lookup: BiHashMap::new(),
-            root_token: uuid::Uuid::new_v4().to_string(),
-            root_token_requested: false,
+            root_token,
+            allow_request_root_key_main: false,
+            allow_request_root_key_settings: false,
         }
-    }
-
-    pub(crate) fn get_cloned_by_runtime_token(&self, token: &str) -> Option<PluginState> {
-        let plugin_id = self.runtime_token_lookup.get_by_left(token)?;
-        self.get_cloned(plugin_id)
-    }
-
-    pub(crate) fn get_runtime_token_by_root_token(
-        &self,
-        plugin_id: &str,
-        root_token: &str,
-    ) -> Option<String> {
-        if self.root_token != root_token {
-            return None;
-        }
-        self.runtime_token_lookup.get_by_right(plugin_id).cloned()
     }
 
     pub(crate) fn get_cloned(&self, id: &str) -> Option<PluginState> {
         self.plugin_states.get(id).cloned()
     }
 
+    /// Indicates a Plugin wants to stop (e.g. when user presses to Stop button)
+    /// Once ack'd, front and backend start unloading resources.
+    /// The stop is finished when the [PluginsState::finalize_stop] is invoked.
     pub(crate) async fn stop<R: Runtime>(
         &mut self,
         id: String,
@@ -226,6 +273,7 @@ impl PluginsState {
         Ok(())
     }
 
+    /// This method indicates the final stop in stopping a plugin
     pub(crate) async fn finalize_stop<R: Runtime>(
         &mut self,
         id: String,
@@ -243,6 +291,10 @@ impl PluginsState {
         Ok(())
     }
 
+    /// Indicates a Plugin wants to start (e.g. when user presses to Start button)
+    /// Once ack'd, front and backend start loading resources.
+    /// The start is finished when the [PluginsState::finalize_start] is invoked.
+    /// Alternatively, if the Frontend has issues loading required assets (e.g. malformed JS Bundle), [PluginsState::start_failed] is invoked.
     pub(crate) async fn start<R: Runtime>(
         &mut self,
         id: String,
@@ -302,7 +354,7 @@ impl PluginsState {
     /// - fetch all user-provided and embedded plugins
     /// - look at the config to figure out which plugins are active
     /// - calls [PluginState::reconcile] for each plugin and notifies it if it should be started or not
-    #[instrument(skip(app_handle))]
+    #[instrument(skip(self, app_handle))]
     async fn reconcile(&mut self, app_handle: &AppHandle<Wry>) -> anyhow::Result<()> {
         let user_plugin_dir = app_handle
             .store("store.json")
@@ -338,7 +390,7 @@ impl PluginsState {
             .map(|x| x.1.clone())
             .collect_vec();
         let active_plugin_ids: Vec<String> =
-            PluginSettings::get_active_ids(app_handle, &all_known_user_plugin_ids)?;
+            GenericPluginSettings::get_active_ids(app_handle, &all_known_user_plugin_ids)?;
         let active_plugin_ids_set: HashSet<_> = active_plugin_ids.into_iter().collect();
 
         // This is what we know internally
@@ -413,7 +465,7 @@ impl PluginsState {
         let action_plan = serde_json::to_string(&actions_map).unwrap();
         info!(
             "Planned reconcile actions: {action_plan}, dir: {}",
-            user_plugin_dir.display()
+            user_plugin_dir.display(),
         );
 
         // We STOP any plugin that was deleted or broke for some reason

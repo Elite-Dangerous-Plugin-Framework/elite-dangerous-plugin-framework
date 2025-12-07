@@ -13,12 +13,12 @@ import { Active, DndContext, DragOverlay } from "@dnd-kit/core";
 import Parkinglot from "./Parkinglot";
 import { getRootToken } from "../commands/getRootToken";
 import PluginReconcilerImpl from "./PluginReconciler";
-import syncMainLayout from "../commands/syncMainLayout";
 import {
   makePluginIdsInParkingLot,
   removeOldItemInChildren,
   traverseNode,
 } from "./helpers";
+import { CommandWrapper } from "../commands/commandWrapper";
 
 export default function App() {
   const [appWin, setAppWin] = useState<Window>();
@@ -39,14 +39,27 @@ export default function App() {
     layout
   );
   useEffect(() => {
-    syncMainLayout().then((e) => setLayout(e));
-
     let manager: PluginsManager | undefined;
     if (!pluginManagerRef.current || pluginManagerRef.current.destroyed) {
-      console.info("plugin manager ref creating");
       getRootToken().then((rootToken) => {
-        const reconciler = new PluginReconcilerImpl(rootToken);
-        manager = new PluginsManager(reconciler);
+        const command = new CommandWrapper(rootToken);
+        command.syncMainLayout().then(e => {
+          if (e.success) {
+            setLayout(e.data)
+          }
+        })
+
+        command.syncMainLayout().then(e => {
+          if (!e.success) {
+            throw new Error("failed to sync layout: " + e.reason)
+          }
+          console.log("sync layout resp", e.data)
+
+          setLayout(e.data)
+        })
+
+        const reconciler = new PluginReconcilerImpl(command);
+        manager = new PluginsManager(command, reconciler);
         manager.init(setPluginState);
         pluginManagerRef.current = manager;
       });
@@ -79,6 +92,9 @@ export default function App() {
         setIsMaximized={setIsMaximized}
         isEditMode={isEditMode}
         toggleEditMode={() => setIsEditMode(!isEditMode)}
+        handleOpenSettingsClick={
+          () => pluginManagerRef.current && pluginManagerRef.current.openSettings()
+        }
       />
       <button
         onClick={() => {
@@ -161,12 +177,14 @@ export default function App() {
               : movedItemData.identifier
           );
 
-          invoke("sync_main_layout", { layout: clonedLayout }).then((e) => {
-            const { data } = z
-              .object({ data: PluginViewStructureZod })
-              .parse(e);
-            setLayout(data);
-          });
+          pluginManagerRef.current && pluginManagerRef.current.syncLayout(clonedLayout).then(e => {
+            if (!e.success) {
+              throw new Error("failed to sync layout: " + e.reason)
+            }
+            console.log("sync layout resp", e.data)
+
+            setLayout(e.data)
+          })
         }}
       >
         <PluginStateCtx.Provider value={pluginState}>
@@ -193,9 +211,9 @@ export default function App() {
           style={
             currentDraggingItem
               ? {
-                  width: currentDraggingItem.rect.current.initial?.width,
-                  height: currentDraggingItem.rect.current.initial?.height,
-                }
+                width: currentDraggingItem.rect.current.initial?.width,
+                height: currentDraggingItem.rect.current.initial?.height,
+              }
               : undefined
           }
         >

@@ -15,25 +15,27 @@ interface HeaderProps {
   setIsMaximized: (m: boolean) => void;
   isEditMode: boolean;
   toggleEditMode: () => void;
+  handleOpenSettingsClick: () => void
 }
 export function Header({
   appWin,
   isMaximized,
   setIsMaximized,
   isEditMode,
+  handleOpenSettingsClick,
   toggleEditMode,
 }: HeaderProps) {
   return (
     <header
       data-tauri-drag-region
-      className={`flex justify-end gap-1 items-stretch ${
-        isEditMode ? "bg-green-900" : "group-hover:visible invisible"
-      } cursor-move`}
+      className={`flex justify-end gap-1 items-stretch ${isEditMode ? "bg-green-900" : "group-hover:visible invisible"
+        } cursor-move`}
     >
       <button
         title="Open Settings"
         onClick={() => {
-          invoke("open_settings");
+          console.info("e")
+          handleOpenSettingsClick()
         }}
         className="px-2 cursor-pointer hover:bg-white/10"
       >
@@ -42,9 +44,8 @@ export function Header({
       <button
         onClick={() => toggleEditMode()}
         title="Change Plugin Arrangement"
-        className={`px-2 cursor-pointer  ${
-          isEditMode ? "bg-green-600 hover:bg-green-500" : "hover:bg-white/10"
-        }`}
+        className={`px-2 cursor-pointer  ${isEditMode ? "bg-green-600 hover:bg-green-500" : "hover:bg-white/10"
+          }`}
       >
         <EditPlugins className="w-6 h-6" editing={isEditMode} />
       </button>

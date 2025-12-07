@@ -140,9 +140,6 @@ impl ReconcileAction {
                 };
 
                 state.current_state = PluginCurrentState::Starting { metadata: vec![] };
-                plugins_states
-                    .runtime_token_lookup
-                    .insert(uuid::Uuid::new_v4().to_string(), plugin_id.clone());
                 /*
                 The Frontend side listens for this event and will start the plugin
                 (or at least try to)
@@ -169,9 +166,6 @@ impl ReconcileAction {
                 };
 
                 state.current_state = PluginCurrentState::Disabling {};
-                plugins_states
-                    .runtime_token_lookup
-                    .remove_by_right(&plugin_id);
 
                 /*
                 The Frontend side listens for this event and will stop the plugin

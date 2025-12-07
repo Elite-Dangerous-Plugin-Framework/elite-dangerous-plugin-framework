@@ -1,8 +1,4 @@
-import finalizeStartPlugin from "../commands/finalizeStartPlugin";
-import finalizeStopPlugin from "../commands/finalizeStopPlugin";
-import getImportPathForPlugin from "../commands/getImportPathForPlugin";
-import getInstanceByPluginId from "../commands/getInstanceByPluginId";
-import startPluginFailed from "../commands/startPluginFailed";
+import { CommandWrapper } from "../commands/commandWrapper";
 import type { PluginStates, PluginStatesPatch } from "./PluginsManager";
 import { startAndLoadPlugin } from "./startAndLoadPlugin";
 
@@ -29,9 +25,9 @@ export interface PluginReconciler {
 }
 
 export default class PluginReconcilerImpl implements PluginReconciler {
-  #rootToken: string;
-  constructor(rootToken: string) {
-    this.#rootToken = rootToken;
+  #command: CommandWrapper;
+  constructor(command: CommandWrapper) {
+    this.#command = command
   }
 
   public async reconcilePlugin(
@@ -48,21 +44,16 @@ export default class PluginReconcilerImpl implements PluginReconciler {
         case "Running":
           // This only really happens on an unexpected UI Refresh. In this instance, we just treat it as a Starting flow
           try {
-            const result = await startAndLoadPlugin(state.id, this.#rootToken, {
-              GetImportPath: getImportPathForPlugin,
-              GetInstanceByPluginId: getInstanceByPluginId,
-              StartPluginFailed: startPluginFailed,
-              FinalizeStartPlugin: finalizeStartPlugin,
-            });
+            const result = await startAndLoadPlugin(state.id, this.#command);
             debugger;
             return result
               ? [
-                  (fullState) => {
-                    if (fullState[state.id]) {
-                      fullState[state.id].currentUiState = result;
-                    }
-                  },
-                ]
+                (fullState) => {
+                  if (fullState[state.id]) {
+                    fullState[state.id].currentUiState = result;
+                  }
+                },
+              ]
               : [];
           } catch (e) {
             console.error(e);
@@ -81,7 +72,10 @@ export default class PluginReconcilerImpl implements PluginReconciler {
             "Found disabling state with no Frontend State attached. Should never happen",
             state
           );
-          await finalizeStopPlugin(state.id);
+          const resp = await this.#command.finalizeStopPlugin(state.id);
+          if (!resp.success) {
+            console.error("failed to finalize stop: " + resp.reason)
+          }
           return [];
       }
     }
@@ -110,7 +104,10 @@ export default class PluginReconcilerImpl implements PluginReconciler {
             state.current_state.type === "Disabled" ||
             state.current_state.type === "Disabling"
           ) {
-            await finalizeStopPlugin(state.id);
+            const resp = await this.#command.finalizeStopPlugin(state.id);
+            if (!resp.success) {
+              console.error("failed to finalize stop: " + resp.reason)
+            }
           }
           return [
             (fullState) => {
@@ -127,15 +124,10 @@ export default class PluginReconcilerImpl implements PluginReconciler {
           if (!state.currentUiState.context.destroyed) {
             try {
               await state.currentUiState.contextDestruction();
-            } catch {}
+            } catch { }
           }
           state.currentUiState.ref.remove();
-          const result = await startAndLoadPlugin(state.id, this.#rootToken, {
-            GetImportPath: getImportPathForPlugin,
-            GetInstanceByPluginId: getInstanceByPluginId,
-            StartPluginFailed: startPluginFailed,
-            FinalizeStartPlugin: finalizeStartPlugin,
-          });
+          const result = await startAndLoadPlugin(state.id, this.#command);
 
           return [
             (fullState) => {
@@ -153,19 +145,13 @@ export default class PluginReconcilerImpl implements PluginReconciler {
               if (!state.currentUiState.context.destroyed) {
                 try {
                   await state.currentUiState.contextDestruction();
-                } catch {}
+                } catch { }
               }
               state.currentUiState.ref.remove();
 
               const result = await startAndLoadPlugin(
                 state.id,
-                this.#rootToken,
-                {
-                  GetImportPath: getImportPathForPlugin,
-                  GetInstanceByPluginId: getInstanceByPluginId,
-                  StartPluginFailed: startPluginFailed,
-                  FinalizeStartPlugin: finalizeStartPlugin,
-                }
+                this.#command
               );
 
               return [

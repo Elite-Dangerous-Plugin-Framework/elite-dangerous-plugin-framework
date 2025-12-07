@@ -31,19 +31,7 @@ export interface PluginContextV1Alpha {
    */
   registerShutdownListener(callback: () => Promise<void>): void;
 
-  /**
-   * ## Used to listen for Settings
-   *
-   * Any plugin may listen for its own and other plugins changing their settings
-   *
-   * Do note that only keys where the last segment start **Uppercase** will be propagated here, except if the setting key is from your own plugin
-   *
-   * Note this can only **be called once**.
-   *
-   */
-  registerSettingsChangedListener(
-    callback: (key: string, value: unknown) => void
-  ): void;
+
 
   /**
    * ## Request a reread of the current Journal
@@ -54,20 +42,53 @@ export interface PluginContextV1Alpha {
    */
   rereadCurrentJournals(): Promise<Record<string, JournalEventItemV1Alpha[]>>;
 
+
+
+
   /**
-   * ## Write a setting for this plugin
+   * Your Plugin is exposed via an asset server that is running on localhost. The Port is not stable. Use this readonly property to get the base URL.
    *
-   * You can also push settings outside the Settings UI. Use this function to write a key / value pair.
+   * You can then append the path to the file, relative to the `frontend` folder. Do note that relative escapes out of the `frontend` folder are not supported.
    *
-   * This is what you should look out for:
-   * - The key contains segments, separated by a dot (.)
-   * - You need at least 2 Segments
-   * - the first segment **MUST** be your plugin ID
-   * - the last segment determines if this is a "public" setting. If it starts uppercase, it is readable by every plugin
-   *    - `myPlugin.some.key` is private. Only your own plugin can read and edit it and get notified about it
-   *    - `myPlugin.some.Key` is public. You can read and edit it, other plugins can read it
+   * `assetsBase` has always a `/` as a suffix.
    */
+  get assetsBase(): string;
+}
+
+/**
+ * Interacting with EDPF beyond the usual receiving of journal events is done with the help of **Capabilities**.
+ * 
+ * There is a set of default capabilities that are deemed safe to use and sensible defaults. There are however also more complex cases that require more access to the user's system.
+ * A plugin has to advertise its need to for these capabilities. It can do so via it's manifest file. 
+ * 
+ * When using non-standard capabilities, a User is prompted / warned the first time they try to run the plugin.
+ */
+export interface PluginContextV1AlphaCapabilities {
+  /**
+   * **Enabled by default**
+   * 
+   * always present, used to read and write settings.
+   */
+  get Settings(): PluginContextV1AlphaCapabilitiesSettings
+
+}
+
+export interface PluginContextV1AlphaCapabilitiesSettings {
+  /**
+ * ## Write a setting for this plugin
+ *
+ * You can also push settings outside the Settings UI. Use this function to write a key / value pair.
+ *
+ * This is what you should look out for:
+ * - The key contains segments, separated by a dot (.)
+ * - You need at least 2 Segments
+ * - the first segment **MUST** be your plugin ID
+ * - the last segment determines if this is a "public" setting. If it starts uppercase, it is readable by every plugin
+ *    - `myPlugin.some.key` is private. Only your own plugin can read and edit it and get notified about it
+ *    - `myPlugin.some.Key` is public. You can read and edit it, other plugins can read it
+ */
   writeSetting(key: string, value: unknown): Promise<void>;
+
 
   /**
    * ## Fetches a setting by Key.
@@ -79,11 +100,16 @@ export interface PluginContextV1Alpha {
   getSetting(key: string): Promise<unknown | undefined>;
 
   /**
-   * Your Plugin is exposed via an asset server that is running on localhost. The Port is not stable. Use this readonly property to get the base URL.
-   *
-   * You can then append the path to the file, relative to the `frontend` folder. Do note that relative escapes out of the `frontend` folder are not supported.
-   *
-   * `assetsBase` has always a `/` as a suffix.
-   */
-  get assetsBase(): string;
+ * ## Used to listen for Settings
+ *
+ * Any plugin may listen for its own and other plugins changing their settings
+ *
+ * Do note that only keys where the last segment starts with an **Uppercase** char will be propagated here, except if the setting key is from your own plugin. This only gives you the key. If you wish the get the value, you should invoke {@link getSetting}
+ *
+ * Note this can only **be called once**.
+ *
+ */
+  registerSettingsChangedListener(
+    callback: (key: string) => void
+  ): void;
 }

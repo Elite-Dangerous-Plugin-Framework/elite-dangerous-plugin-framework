@@ -1,33 +1,22 @@
 pub(crate) mod event_watchdog;
 pub(crate) mod plugins;
-use std::{env, sync::Arc};
+use std::{env, path::PathBuf, sync::Arc};
 
 use plugins::PluginsState;
 use tauri::{
     menu::{MenuBuilder, MenuItem, MenuItemBuilder, SubmenuBuilder},
     tray::TrayIconBuilder,
+    webview::PageLoadEvent,
     Manager,
 };
 use tokio::sync::RwLock;
-use tracing::{instrument::WithSubscriber, Instrument};
-use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt, EnvFilter, Layer};
-
-// Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
-#[tauri::command]
-fn greet(name: &str) -> String {
-    format!("Hello, {}! You've been greeted from Rust!", name)
-}
+use tracing::info;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     // This should be called as early in the execution of the app as possible
 
-    let mut builder = tauri::Builder::default();
-    #[cfg(debug_assertions)]
-    {
-        builder = builder.plugin(tauri_plugin_devtools::init());
-    };
-    builder
+    tauri::Builder::default()
         .plugin(tauri_plugin_store::Builder::new().build())
         .plugin(tauri_plugin_single_instance::init(|app, _, _| {
             let _ = app
@@ -47,21 +36,17 @@ pub fn run() {
                 let _ = plugins::frontend_server::spawn_server_blocking(&handle).await;
             });
             let handle = app.app_handle().clone();
-            let reconciler_span = tracing::info_span!("plugin-reconciler");
-            tauri::async_runtime::spawn(
-                async move {
-                    let _ = plugins::spawn_reconciler_blocking(&handle).await;
-                }
-                .instrument(reconciler_span),
-            );
+            tauri::async_runtime::spawn(async move {
+                let _ = plugins::spawn_reconciler_blocking(&handle).await;
+            });
             let handle = app.app_handle().clone();
-            let reconciler_span = tracing::info_span!("journal-watchdog");
-            tauri::async_runtime::spawn(
-                async move {
-                    let _ = event_watchdog::event_watchdog(handle).await;
-                }
-                .instrument(reconciler_span),
-            );
+            // a mapping of CMDR Name to what is considered the active journal file. This is managed by Tauri so that Plugins can request to replay the current file
+            app.manage(Arc::new(
+                RwLock::new(bimap::BiMap::<String, PathBuf>::new()),
+            ));
+            tauri::async_runtime::spawn(async move {
+                let _ = event_watchdog::event_watchdog(&handle).await;
+            });
 
             // big thanks to Ratul @ https://ratulmaharaj.com/posts/tauri-custom-menu/
             let quit_item = MenuItem::with_id(app, "edpf-quit", "Quit", true, None::<&str>)?;
@@ -113,20 +98,35 @@ pub fn run() {
             Ok(())
         })
         .plugin(tauri_plugin_opener::init())
+        .on_page_load(|window, event| {
+            let w = window.label();
+            if let PageLoadEvent::Finished = event.event() {
+                info!("page load finished. id: {}", w)
+            }
+            let state = window.app_handle().state::<Arc<RwLock<PluginsState>>>();
+            let mut data = state.blocking_write();
+
+            match w {
+                "settings" => data.allow_request_root_key_settings = true,
+                "main" => data.allow_request_root_key_main = true,
+                _ => {}
+            }
+        })
         .invoke_handler(tauri::generate_handler![
-            greet,
             plugins::commands::fetch_all_plugins,
             plugins::commands::get_import_path_for_plugin,
             plugins::commands::open_settings,
             plugins::commands::open_plugins_dir,
             plugins::commands::start_plugin,
             plugins::commands::stop_plugin,
-            plugins::commands::get_plugin_by_instance_id,
-            plugins::commands::get_instance_id_by_plugin,
             plugins::commands::start_plugin_failed,
             plugins::commands::finalize_stop_plugin,
             plugins::commands::finalize_start_plugin,
             plugins::commands::sync_main_layout,
+            plugins::commands::reread_active_journal,
+            plugins::commands::write_setting,
+            plugins::commands::read_setting,
+            plugins::commands::get_plugin,
             plugins::get_root_token_once,
         ])
         .run(tauri::generate_context!())

@@ -1,3 +1,4 @@
+use axum::extract::Path;
 use chrono::{DateTime, TimeDelta, Utc};
 use ed_journals::logs::LogEventContent;
 use serde::{Deserialize, Serialize};
@@ -10,26 +11,30 @@ use std::{
     thread,
     time::Duration,
 };
-use tauri::{AppHandle, Emitter, Wry};
+use tauri::{AppHandle, Emitter, Manager, Wry};
 use tokio::{
     sync::{mpsc, RwLock},
     time::sleep,
 };
 use tracing::{error, info, info_span, warn, Instrument};
 
-pub(super) async fn event_watchdog(app_handle: AppHandle<Wry>) -> ! {
+pub(super) async fn event_watchdog(app_handle: &AppHandle<Wry>) -> ! {
     // We spawn a background thread that is responsible to listen for changes to the journal directory.
     // This contains essentially nested threads. We make the assumption that multiple players can be active as the same
     // time (=multiboxing).
     // This thread is a watchdog looking for changed journals. Once we found one, a new thread for that journal is created.
     // ed_journals will read each item in the log
 
+    let active_journal_files = app_handle
+        .state::<Arc<RwLock<bimap::BiMap<String, PathBuf>>>>()
+        .inner()
+        .clone();
+
     let app_handle = app_handle.clone();
     let journal_dir = ed_journals::journal::auto_detect_journal_path().unwrap();
     // bit of an assumption that any "active" players received
     let mut last_checked_time = Utc::now() - TimeDelta::seconds(60 * 2);
     // a mapping of CMDR Name to what is considered the active journal file
-    let active_journal_files = Arc::new(RwLock::new(bimap::BiMap::<String, PathBuf>::new()));
 
     loop {
         info!("Running Journal Watchdog…");
@@ -54,7 +59,6 @@ pub(super) async fn event_watchdog(app_handle: AppHandle<Wry>) -> ! {
             };
         for (cmdr, file) in new_cmdr_journal_files {
             let active_journal_files = active_journal_files.clone();
-
             if let bimap::Overwritten::Pair(_, _) = active_journal_files
                 .write()
                 .await
@@ -87,7 +91,6 @@ pub(super) async fn event_watchdog(app_handle: AppHandle<Wry>) -> ! {
                 let mut reader = reader;
                 let (events_tx, mut events_rx) = mpsc::channel::<LogEventWithContext>(128);
 
-                // This function 
                 tauri::async_runtime::spawn(async move {
                     let mut buffer = Vec::new();
                     loop {
