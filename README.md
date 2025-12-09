@@ -1,7 +1,15 @@
-# Tauri + React + Typescript
+# Elite: Dangerous Plugin Framework
 
-This template should help get you started developing with Tauri, React and Typescript in Vite.
+**A cross-platform plugin runner for Elite: Dangerous 3rd party tooling**
 
-## Recommended IDE Setup
+[Install Instructions](https://cmdr-wdx.github.io/elite-dangerous-plugin-framework/guide/index.html) | [Writing Plugins](https://cmdr-wdx.github.io/elite-dangerous-plugin-framework/guide-dev/index.html)
 
-- [VS Code](https://code.visualstudio.com/) + [Tauri](https://marketplace.visualstudio.com/items?itemName=tauri-apps.tauri-vscode) + [rust-analyzer](https://marketplace.visualstudio.com/items?itemName=rust-lang.rust-analyzer)
+# Roadmap
+
+## Minimum Viable Product v0.1.X
+
+This will be the initial release, containing the neccesary logic to load plugins, start / stop plugins, display and arrange plugins.
+
+This will *NOT* contain a plugin registry.
+
+Things at this stage are not stable, APIs may change. 

@@ -1,0 +1,24 @@
+{
+  "name": "@elite-dangerous-plugin-framework/core",
+  "version": "0.0.1",
+  "description": "Abstraction layer around HTMLElement that brings you Autocompletion and common tooling for your Plugin Elements",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "npm run clean && npm run build:js && npm run build:types",
+    "build:gen": "bun run generate.ts",
+    "build:js": "esbuild src/index.ts --bundle --minify --sourcemap --platform=node --target=node18 --format=esm --outfile=dist/index.js",
+    "build:types": "tsc --emitDeclarationOnly --outDir dist",
+    "publish": "bun publish --access public",
+    "clean": "rm -rf dist"
+  },
+  "devDependencies": {
+    "@types/node": "^24.4.0",
+    "typescript": "^5.5.0"
+  }
+}

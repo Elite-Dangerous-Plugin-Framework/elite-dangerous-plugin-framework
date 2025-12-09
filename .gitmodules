@@ -1,0 +1,3 @@
+[submodule "npm-packages/journal/schema"]
+	path = npm-packages/journal/schema
+	url = https://github.com/jixxed/ed-journal-schemas.git
