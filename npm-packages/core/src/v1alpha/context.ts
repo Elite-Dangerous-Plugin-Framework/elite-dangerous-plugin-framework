@@ -71,6 +71,14 @@ export interface PluginContextV1AlphaCapabilities {
    */
   get Settings(): PluginContextV1AlphaCapabilitiesSettings
 
+  /**
+ * Your Plugin is exposed via an asset server that is running on localhost. The Port is not stable. Use this readonly property to get the base URL.
+ *
+ * You can then append the path to the file, relative to the `frontend` folder. Do note that relative escapes out of the `frontend` folder are not supported.
+ *
+ * `assetsBase` has always a `/` as a suffix.
+ */
+  get assetsBase(): string;
 }
 
 export interface PluginContextV1AlphaCapabilitiesSettings {
@@ -87,7 +95,7 @@ export interface PluginContextV1AlphaCapabilitiesSettings {
  *    - `myPlugin.some.key` is private. Only your own plugin can read and edit it and get notified about it
  *    - `myPlugin.some.Key` is public. You can read and edit it, other plugins can read it
  */
-  writeSetting(key: string, value: unknown): Promise<void>;
+  writeSetting(key: string, value: undefined | unknown): Promise<undefined | unknown>;
 
 
   /**

@@ -5,13 +5,15 @@ import {
   ZondiconsFolder,
 } from "../icons/pluginType";
 import { PluginState } from "../types/PluginState";
-import { invoke } from "@tauri-apps/api/core";
-import z from "zod";
 import React from "react";
 import { StatusIndicator } from "./Settings";
+import { CommandWrapper } from "../commands/commandWrapper";
+import { SettingsComponentLoadState, startAndLoadSettings } from "./startAndLoadSettings";
+import { SettingsCell } from "./SettingsCell";
 
 export interface SettingsPluginPaneProps {
   plugin: PluginState;
+  commands: CommandWrapper
 }
 
 function getName(plugin: PluginState) {
@@ -33,93 +35,21 @@ function getDisplayVersion(plugin: PluginState) {
   return undefined;
 }
 
-type SettingsComponentLoadState =
-  | { type: "Loading" }
-  | {
-      type: "PluginNotFound";
-    }
-  | {
-      type: "FailedAwaitImport";
-    }
-  | {
-      type: "NoSettingsExported";
-    }
-  | {
-      type: "SettingsExportNotHTMLElement";
-    }
-  | {
-      type: "Registered";
-      registeredAs: string;
-    };
 
-export function SettingsPluginPane({ plugin }: SettingsPluginPaneProps) {
+
+export function SettingsPluginPane({
+  plugin,
+  commands
+}: SettingsPluginPaneProps) {
   const pluginVersion = getDisplayVersion(plugin);
   const description = getDescription(plugin);
-  const settingsWebComponentRef = useRef<HTMLElement | null>(null);
   const [settingsLoadState, setSettingsLoadState] =
     useState<SettingsComponentLoadState>({ type: "Loading" });
 
+
   useEffect(() => {
     // We (try to) register the ES-Module for this Plugin and try to find a Settings Component. If found, we register the Web Component. You cannot un-register web components. This is also why the hash is in here.
-    (async () => {
-      const result = z
-        .object({
-          success: z.literal(false),
-          reason: z.enum(["PLUGIN_NOT_FOUND"]),
-        })
-        .or(
-          z.object({
-            success: z.literal(true),
-            import: z.string(),
-            hash: z.string(),
-          })
-        )
-        .parse(
-          await invoke("get_import_path_for_plugin", { pluginId: plugin.id })
-        );
-
-      let module: any;
-      if (result.success) {
-        try {
-          module = await import(/* @vite-ignore */ result.import);
-        } catch (err) {
-          console.error(err);
-          setSettingsLoadState({ type: "FailedAwaitImport" });
-          return;
-        }
-      } else if (result.reason === "PLUGIN_NOT_FOUND") {
-        setSettingsLoadState({ type: "PluginNotFound" });
-        return;
-      }
-      // if here, module exists
-      if (!module.Settings) {
-        setSettingsLoadState({ type: "NoSettingsExported" });
-        return;
-      }
-      // This essentially checks if the export is a class definition that inherits HTMLElement
-
-      if (
-        typeof module.Settings !== "function" ||
-        !Object.prototype.isPrototypeOf.call(
-          HTMLElement.prototype,
-          module.Settings.prototype
-        )
-      ) {
-        setSettingsLoadState({ type: "SettingsExportNotHTMLElement" });
-        return;
-      }
-
-      let customElementID = `settings-${plugin.id}-${
-        result.success ? result.hash : "no-hash"
-      }`;
-      if (!customElements.get(customElementID)) {
-        customElements.define(customElementID, module.Settings);
-      }
-      setSettingsLoadState({
-        type: "Registered",
-        registeredAs: customElementID,
-      });
-    })();
+    startAndLoadSettings(plugin.id, commands).then(setSettingsLoadState)
   }, [plugin.id]);
 
   const currentStateType = plugin.current_state.type;
@@ -153,7 +83,7 @@ export function SettingsPluginPane({ plugin }: SettingsPluginPaneProps) {
                 className="h-6 w-6 "
                 currentState={"Abort"}
                 onClick={() => {
-                  invoke("stop_plugin", { pluginId: plugin.id });
+                  commands.stopPlugin(plugin.id)
                 }}
               />
             </button>
@@ -164,12 +94,11 @@ export function SettingsPluginPane({ plugin }: SettingsPluginPaneProps) {
               currentStateType === "Starting" ||
               currentStateType === "Disabling"
             }
-            className={`rounded-lg p-2 bg-white/10 hover:bg-white/20 ${
-              currentStateType === "Starting" ||
+            className={`rounded-lg p-2 bg-white/10 hover:bg-white/20 ${currentStateType === "Starting" ||
               currentStateType === "Disabling"
-                ? "cursor-progress animate-pulse"
-                : "cursor-pointer"
-            } `}
+              ? "cursor-progress animate-pulse"
+              : "cursor-pointer"
+              } `}
           >
             <PluginStartStopButton
               className={`h-6 w-6 `}
@@ -179,9 +108,9 @@ export function SettingsPluginPane({ plugin }: SettingsPluginPaneProps) {
                   currentStateType === "Disabled" ||
                   currentStateType === "FailedToStart"
                 ) {
-                  invoke("start_plugin", { pluginId: plugin.id });
+                  commands.startPlugin(plugin.id)
                 } else if (currentStateType === "Running") {
-                  invoke("stop_plugin", { pluginId: plugin.id });
+                  commands.stopPlugin(plugin.id)
                 }
               }}
             />
@@ -190,7 +119,7 @@ export function SettingsPluginPane({ plugin }: SettingsPluginPaneProps) {
             <button
               id="plugin-start-stop"
               onClick={async () =>
-                await invoke("open_plugins_dir", { pluginId: plugin.id })
+                await commands.openPluginsDir(plugin.id)
               }
               title="Open Plugin Folder"
               className="rounded-lg bg-white/10 hover:bg-white/20 p-2 cursor-pointer "
@@ -236,16 +165,16 @@ export function SettingsPluginPane({ plugin }: SettingsPluginPaneProps) {
             be reported.
           </p>
         )}
-        {settingsLoadState.type === "SettingsExportNotHTMLElement" && (
+        {settingsLoadState.type === "SettingsExportNotHTMLElement" || settingsLoadState.type === "InitializationFailed" && (
           <p>
             The plugin does not correctly define the settings. Please contact
             the plugin developer.
+            {settingsLoadState.reason && <span className="block text-red-300">{settingsLoadState.reason}</span>}
           </p>
         )}
         {settingsLoadState.type === "Registered" &&
-          React.createElement(settingsLoadState.registeredAs, {
-            ref: settingsWebComponentRef,
-          })}
+          <SettingsCell reference={settingsLoadState.instance} />
+        }
       </section>
     </div>
   );

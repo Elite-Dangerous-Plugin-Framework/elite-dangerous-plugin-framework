@@ -7,7 +7,6 @@ import { listen } from "@tauri-apps/api/event";
 import { PluginCurrentStateKeys } from "../types/PluginCurrentState";
 import { countPluginStates, PluginStateUIData } from "./utils";
 import { ZondiconsFolder } from "../icons/pluginType";
-import { invoke } from "@tauri-apps/api/core";
 import { CommandWrapper } from "../commands/commandWrapper";
 import { getRootToken } from "../commands/getRootToken";
 
@@ -18,13 +17,38 @@ export default function Settings() {
   const commandWrapperRef = useRef<CommandWrapper>();
 
   useEffect(() => {
-    if (!commandWrapperRef.current) {
-      getRootToken().then(e => {
-        commandWrapperRef.current = new CommandWrapper(e);
+    const updateUnlisten = listen("core/plugins/update", async () => {
+      if (!commandWrapperRef.current) { return }
+      const p = await commandWrapperRef.current?.fetchAllPlugins()
+      if (!p.success) {
+        throw new Error("failed to fetch all plugins: " + p.reason)
+      }
+      const result = Object.entries(p.data)
+        .map(([id, v]) => ({ ...v, id }))
+        .sort((a, b) => a.id.localeCompare(b.id));
+      setPluginStates(result);
+    });
+    (async () => {
+      if (!commandWrapperRef.current) {
+        commandWrapperRef.current = new CommandWrapper(await getRootToken());
+      }
 
-      })
 
-    }
+      const p = await commandWrapperRef.current?.fetchAllPlugins()
+      if (!p.success) {
+        throw new Error("failed to fetch all plugins: " + p.reason)
+      }
+      const result = Object.entries(p.data)
+        .map(([id, v]) => ({ ...v, id }))
+        .sort((a, b) => a.id.localeCompare(b.id));
+      setPluginStates(result);
+
+
+    })()
+    return () => {
+      updateUnlisten.then((e) => e());
+    };
+
   }, [])
 
 
@@ -51,6 +75,7 @@ export default function Settings() {
     (async () => {
       if (!commandWrapperRef.current) { return }
       const p = await commandWrapperRef.current?.fetchAllPlugins()
+      console.log({ p })
       if (!p.success) {
         throw new Error("failed to fetch all plugins: " + p.reason)
       }
@@ -93,7 +118,7 @@ export default function Settings() {
           <hr className=" mx-2 text-gray-600" />
           <button
             onClick={() => {
-              invoke("open_plugins_dir", {});
+              commandWrapperRef.current && commandWrapperRef.current.openPluginsDir()
             }}
             className="flex cursor-pointer flex-row justify-center items-center gap-2 py-2 hover:bg-white/10"
           >
@@ -103,12 +128,13 @@ export default function Settings() {
         </div>
       </section>
       <section id="settings" className="flex-1 pl-[200px] inline-flex flex-col">
-        {activeId === undefined ? (
+        {activeId === undefined || !commandWrapperRef.current ? (
           <SettingsMainNoneSelected
             pluginStateCount={countPluginStates(pluginStates ?? [])}
           />
         ) : (
           <SettingsMain
+            commands={commandWrapperRef.current}
             plugin={(pluginStates ?? []).find((e) => e.id === activeId)}
           />
         )}
@@ -117,7 +143,7 @@ export default function Settings() {
   );
 }
 
-function SettingsMain({ plugin }: { plugin: PluginState | undefined }) {
+function SettingsMain({ plugin, commands }: { plugin: PluginState | undefined, commands: CommandWrapper }) {
   if (!plugin) {
     return (
       <div>
@@ -127,7 +153,7 @@ function SettingsMain({ plugin }: { plugin: PluginState | undefined }) {
     );
   }
 
-  return <SettingsPluginPane plugin={plugin} />;
+  return <SettingsPluginPane commands={commands} plugin={plugin} />;
 }
 
 function SettingsSidebarPlugin({

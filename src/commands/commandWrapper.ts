@@ -288,7 +288,7 @@ export class CommandWrapper {
     }
   }
 
-  public async writeSetting(pluginId: string, key: string, value: string) {
+  public async writeSetting(pluginId: string, key: string, value: any) {
     const { iv: reqIv, payload: reqPayload } = await encryptPayload(this.#key, { pluginId, key, value })
 
     const response = await invoke("write_setting", { iv: reqIv, payload: reqPayload })
@@ -319,7 +319,7 @@ export class CommandWrapper {
       }
     }
 
-    const verifiedPayload = z.object({ key: z.string(), value: z.string() }).safeParse(payload)
+    const verifiedPayload = z.object({ key: z.string(), value: z.any().optional().nullable() }).safeParse(payload)
     if (verifiedPayload.error) {
       return {
         success: false as const,
@@ -364,8 +364,9 @@ export class CommandWrapper {
       }
     }
 
-    const verifiedPayload = z.object({ key: z.string(), value: z.string().optional() }).safeParse(payload)
+    const verifiedPayload = z.object({ key: z.string(), value: z.any().optional().nullable() }).safeParse(payload)
     if (verifiedPayload.error) {
+      console.error(payload)
       return {
         success: false as const,
         reason: "DECRYPTED_RESPONSE_STRUCTURE_INVALID",

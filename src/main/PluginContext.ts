@@ -84,7 +84,11 @@ export class PluginContextV1AlphaImpl implements PluginContextV1Alpha {
   public async rereadCurrentJournals(): Promise<
     Record<string, JournalEventItemV1Alpha[]>
   > {
-    throw new Error("not implemented");
+    const result = await this.#commands.rereadActiveJournals()
+    if (!result.success) {
+      throw new Error("failed to reread active journals: " + result.reason)
+    }
+    return Object.fromEntries(result.data.map(e => ([e.cmdr, e.entries.map(f => ({ cmdr: e.cmdr, file: e.file, event: f }))])))
   }
 
   /**
@@ -106,7 +110,7 @@ export class PluginContextV1AlphaImpl implements PluginContextV1Alpha {
     const importPath = importPathZod.data.import
     const assetsBase = importPath.substring(0, importPath.lastIndexOf("/") + 1);
 
-    const ctx = new PluginContextV1AlphaImpl(commands, assetsBase, pluginId, PluginContextCapabilitiesV1AlphaImpl.create(commands));
+    const ctx = new PluginContextV1AlphaImpl(commands, assetsBase, pluginId, PluginContextCapabilitiesV1AlphaImpl.create(commands, pluginId, assetsBase));
     return {
       ctx,
       notifyDestructor: async () => ctx.#notifyDestroy(),
@@ -119,28 +123,43 @@ export class PluginContextV1AlphaImpl implements PluginContextV1Alpha {
 }
 
 export class PluginContextCapabilitiesV1AlphaImpl implements PluginContextV1AlphaCapabilities {
-  constructor(private settings: PluginContextV1AlphaCapabilitiesSettings) {
+  #assetBase: string;
+  constructor(private settings: PluginContextV1AlphaCapabilitiesSettings, assetBase: string) {
+    this.#assetBase = assetBase
   }
   get Settings(): PluginContextV1AlphaCapabilitiesSettings {
     return this.settings
   }
 
-  static create(command: CommandWrapper) {
-    const settings = new PluginContextV1AlphaCapabilitiesSettingsImpl(command)
-    return new PluginContextCapabilitiesV1AlphaImpl(settings)
+  get assetsBase() {
+    return this.#assetBase
+  }
+
+  static create(command: CommandWrapper, pluginId: string, assetsBase: string) {
+
+    const settings = new PluginContextV1AlphaCapabilitiesSettingsImpl(command, pluginId)
+    return new PluginContextCapabilitiesV1AlphaImpl(settings, assetsBase)
   }
 }
 
 export class PluginContextV1AlphaCapabilitiesSettingsImpl implements PluginContextV1AlphaCapabilitiesSettings {
 
-  constructor(private commands: CommandWrapper) { }
+  constructor(private commands: CommandWrapper, private pluginId: string) { }
 
 
-  writeSetting(key: string, value: unknown): Promise<void> {
-    throw new Error("Method not implemented.");
+  async writeSetting(key: string, value: any | undefined): Promise<unknown | undefined> {
+    const resp = await this.commands.writeSetting(this.pluginId, key, value)
+    if (!resp.success) {
+      throw new Error("failed to get setting: " + resp.reason)
+    }
+    return resp.data.value
   }
-  getSetting(key: string): Promise<unknown | undefined> {
-    throw new Error("Method not implemented.");
+  async getSetting(key: string): Promise<unknown | undefined> {
+    const resp = await this.commands.readSetting(this.pluginId, key)
+    if (!resp.success) {
+      throw new Error("failed to get setting: " + resp.reason)
+    }
+    return resp.data.value
   }
   registerSettingsChangedListener(callback: (key: string) => void): void {
     throw new Error("Method not implemented.");
