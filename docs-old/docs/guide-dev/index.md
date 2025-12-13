@@ -2,6 +2,30 @@
 
 This is a high-level overview of what a plugin is, how it's defined, built and loaded.
 
+
+![A high-level overview of how Plugins are structured](./highlevel-overview.drawio.svg)
+
+EDPF lets you load Plugins. Plugins are defines as JS Web Components. The Frontend loads your Web Component by [importing your Plugin asynchronously at runtime](https://javascript.info/modules-dynamic-imports).
+Your Web Component gets instantiated and notified by EDPF about Journal changes, which your Web Component can then act upon by changing the UI, doing API Calls, and so on. EDPF exposes all your assets via a Server.
+
+
+## FAQ
+### What do I need to write a plugin?
+In short, all you need is an `index.js` File that exports a `default class SomeName` that extends `HTMLElement` and defines a `initPlugin(ctx)` method and a `manifest.json` that declares your plugin. That is all. How you get build the Web Component, is up to you. Want to keep it simple and just use JS directly? That's fine. Want to go all out and use all the Frontend frameworks under the sun, Unit Tests, I18n, Libraries, …? That's also fine. As long as you can throw your stack into a Web Component, it will work.
+
+### Where should I best start?
+It's probably best to start looking at one of the [template projects](#quickstart-templates) below. 
+
+### How does my Plugin receive Journal data?
+Your Web Component must expose an `initPlugin(ctx)` Method. Via this Method, your Plugin gets a Context provided. You can then register a callback with this context to be notified when a new journal item it found.
+Note that journal entries are provided as strings due to JS handling all numbers as floats, which causes precision issues for IDs. 
+
+We have a helper-library provided via [`@elite-dangerous-plugin-framework/journal`](https://www.npmjs.com/package/@elite-dangerous-plugin-framework/journal) which gives you autocompletion for all events and the option to use BigInts for Numbers (if you need correct IDs) or just regular `number`s (if you don't care about IDs, easier to work with).
+
+### I have assets (pictures, fonts, stylesheets, …) - how can I load them
+Assets are loaded from a locally running asset server. Use the readonly `baseUrl` property on the context and append the file name. Note that everything places in the `frontend` folder is exposed via this asset server. 
+E.g. if you want to load a stylesheet for your plugin, you can reference it like `<link rel="stylesheet" href={ctx.assetsBase + "style.css"} />`.
+
 ## What is a plugin?
 
 A plugin is defined by essentially 2 components - a _Plugin manifest_ and a _Javascript Bundle_.
