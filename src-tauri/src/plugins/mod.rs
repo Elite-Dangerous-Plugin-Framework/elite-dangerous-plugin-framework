@@ -85,6 +85,14 @@ pub(super) async fn spawn_reconciler_blocking(app_state: &AppHandle<Wry>) -> () 
         }
     }
 
+    // Check that the Plugin Dir exists. If it doesn't, create it.
+    if !user_plugin_dir.exists() {
+        info!(
+            "User Plugin Directory doesn't exist yet. Attempting to create directory at {}",
+            user_plugin_dir.display()
+        );
+        std::fs::create_dir_all(&user_plugin_dir).unwrap();
+    }
     watcher
         .watch(&user_plugin_dir, notify::RecursiveMode::Recursive)
         .unwrap();
