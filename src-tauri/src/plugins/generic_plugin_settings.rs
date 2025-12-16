@@ -7,6 +7,8 @@ use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Runtime};
 use tauri_plugin_store::StoreBuilder;
 use tracing::error;
+
+use super::internal_plugin_ids;
 #[derive(Debug, Serialize, Deserialize, Default)]
 /// This contains the entire **generic** Configurable State for a plugin.  
 /// Settings read/set from the Plugins themselves are managed separately
@@ -89,6 +91,9 @@ impl GenericPluginSettings {
                 };
 
                 if resp.enabled {
+                    Some(id.clone())
+                } else if internal_plugin_ids().contains(&id.as_str()) {
+                    // this is an internal plugin. We should have them be enabled by default
                     Some(id.clone())
                 } else {
                     None
