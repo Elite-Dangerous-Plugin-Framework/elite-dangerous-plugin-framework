@@ -1,5 +1,4 @@
 export function base64ToBytesNoPadding(b64: string) {
-  // @ts-expect-error
   return Uint8Array.fromBase64(b64) as Uint8Array;
 }
 
@@ -29,9 +28,7 @@ export async function encryptPayload(root_token: CryptoKey, payload: object) {
   // at this point we have the cipher as a binary blob.
   // convert to b64
   return {
-    // @ts-expect-error
     iv: iv.toBase64({ omitPadding: true }),
-    // @ts-expect-error
     payload: ciphertext.toBase64({ omitPadding: true }),
   };
 }
@@ -44,9 +41,7 @@ export async function decryptPayload(
   ivStr: string,
   cipherStr: string
 ) {
-  // @ts-expect-error
   const iv = Uint8Array.fromBase64(ivStr);
-  // @ts-expect-error
   const cipher = Uint8Array.fromBase64(cipherStr);
 
   const cleartext = await crypto.subtle.decrypt(
