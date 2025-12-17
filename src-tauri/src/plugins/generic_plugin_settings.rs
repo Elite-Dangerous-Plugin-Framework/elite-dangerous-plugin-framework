@@ -14,8 +14,7 @@ use super::internal_plugin_ids;
 /// Settings read/set from the Plugins themselves are managed separately
 pub(crate) struct GenericPluginSettings {
     /// If true, the Plugin is running. If false, it's not running.
-    /// If missing, this defaults to disabled for user-provided and enabled for embedded plugins
-    pub(crate) enabled: Option<bool>,
+    pub(crate) enabled: bool,
     /// Defaults to false. The first time this plugin is discovered a popup is made, which will tell you about the Plugin's config, required permissions, etc
     /// with an option to quickly enable this plugin
     pub(crate) already_known: bool,
@@ -80,6 +79,8 @@ impl GenericPluginSettings {
             Err(e) => return Err(anyhow::anyhow!("failed to build store: {e}")),
         };
 
+        let embedded_plugins = internal_plugin_ids();
+
         Ok(ids_to_check
             .iter()
             .filter_map(|id| {
@@ -88,14 +89,19 @@ impl GenericPluginSettings {
                         Ok(x) => x,
                         Err(_) => return None,
                     },
-                    None => return None,
+                    None => {
+                        if embedded_plugins.contains(&id.as_str()) {
+                            // if the plugin has no config yet, we make sure to start it at init IF it is an embedded plugin.
+                            return Some(id.clone());
+                        } else {
+                            return None;
+                        }
+                    }
                 };
 
-                let is_embedded = internal_plugin_ids().contains(&id.as_str());
-                // if no preference is set, embedded pugins are enabled by default, user-provided ones are not.
-                match (resp.enabled, is_embedded) {
-                    (None, true) | (Some(true), _) => Some(id.clone()),
-                    (None, false) | (Some(false), _) => None,
+                match resp.enabled {
+                    true => Some(id.clone()),
+                    false => None,
                 }
             })
             .collect())

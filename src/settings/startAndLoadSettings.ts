@@ -111,7 +111,6 @@ export async function startAndLoadSettings(
     }
   }
 
-  await commands.finalizeStartPlugin(pluginID);
   return {
     type: "Registered",
     instance: item

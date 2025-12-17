@@ -225,8 +225,8 @@ pub(crate) async fn start_plugin<R: Runtime>(
         }
     }
     .unwrap_or_default();
-    if settings.enabled.is_none_or(|x| !x) {
-        settings.enabled = Some(true);
+    if !settings.enabled {
+        settings.enabled = true;
         _ = settings.commit(&app, &payload.plugin_id)
     }
 
@@ -326,8 +326,8 @@ pub(crate) async fn stop_plugin<R: Runtime>(
         }
     }
     .unwrap_or_default();
-    if settings.enabled.is_none_or(|x| x) {
-        settings.enabled = Some(false);
+    if settings.enabled {
+        settings.enabled = false;
         _ = settings.commit(&app, &payload.plugin_id)
     }
 
