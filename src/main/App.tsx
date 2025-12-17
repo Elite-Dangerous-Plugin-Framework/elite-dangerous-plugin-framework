@@ -95,13 +95,6 @@ export default function App() {
           pluginManagerRef.current && pluginManagerRef.current.openSettings()
         }
       />
-      <button
-        onClick={() => {
-          console.log({ pluginState, pluginManagerRef });
-        }}
-      >
-        print state
-      </button>
       <DndContext
         onDragStart={(ev) => {
           setCurrentDraggingItem(ev.active);
@@ -211,9 +204,9 @@ export default function App() {
           style={
             currentDraggingItem
               ? {
-                  width: currentDraggingItem.rect.current.initial?.width,
-                  height: currentDraggingItem.rect.current.initial?.height,
-                }
+                width: currentDraggingItem.rect.current.initial?.width,
+                height: currentDraggingItem.rect.current.initial?.height,
+              }
               : undefined
           }
         >
