@@ -13,8 +13,9 @@ use super::internal_plugin_ids;
 /// This contains the entire **generic** Configurable State for a plugin.  
 /// Settings read/set from the Plugins themselves are managed separately
 pub(crate) struct GenericPluginSettings {
-    /// If true, the Plugin is running. If false, it's not running
-    pub(crate) enabled: bool,
+    /// If true, the Plugin is running. If false, it's not running.
+    /// If missing, this defaults to disabled for user-provided and enabled for embedded plugins
+    pub(crate) enabled: Option<bool>,
     /// Defaults to false. The first time this plugin is discovered a popup is made, which will tell you about the Plugin's config, required permissions, etc
     /// with an option to quickly enable this plugin
     pub(crate) already_known: bool,
@@ -90,13 +91,11 @@ impl GenericPluginSettings {
                     None => return None,
                 };
 
-                if resp.enabled {
-                    Some(id.clone())
-                } else if internal_plugin_ids().contains(&id.as_str()) {
-                    // this is an internal plugin. We should have them be enabled by default
-                    Some(id.clone())
-                } else {
-                    None
+                let is_embedded = internal_plugin_ids().contains(&id.as_str());
+                // if no preference is set, embedded pugins are enabled by default, user-provided ones are not.
+                match (resp.enabled, is_embedded) {
+                    (None, true) | (Some(true), _) => Some(id.clone()),
+                    (None, false) | (Some(false), _) => None,
                 }
             })
             .collect())
