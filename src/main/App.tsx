@@ -6,7 +6,6 @@ import PluginsManager, {
   PluginStateContainingCurrentStateZod,
 } from "./PluginsManager";
 import { AnyNodeZod, PluginViewStructureZod } from "./layouts/types";
-import { invoke } from "@tauri-apps/api/core";
 import VerticalLayout from "./layouts/VerticalLayout";
 import { PluginStateCtx } from "./contexts/pluginStateContext";
 import { Active, DndContext, DragOverlay } from "@dnd-kit/core";
@@ -43,20 +42,20 @@ export default function App() {
     if (!pluginManagerRef.current || pluginManagerRef.current.destroyed) {
       getRootToken().then((rootToken) => {
         const command = new CommandWrapper(rootToken);
-        command.syncMainLayout().then(e => {
+        command.syncMainLayout().then((e) => {
           if (e.success) {
-            setLayout(e.data)
+            setLayout(e.data);
           }
-        })
+        });
 
-        command.syncMainLayout().then(e => {
+        command.syncMainLayout().then((e) => {
           if (!e.success) {
-            throw new Error("failed to sync layout: " + e.reason)
+            throw new Error("failed to sync layout: " + e.reason);
           }
-          console.log("sync layout resp", e.data)
+          console.log("sync layout resp", e.data);
 
-          setLayout(e.data)
-        })
+          setLayout(e.data);
+        });
 
         const reconciler = new PluginReconcilerImpl(command);
         manager = new PluginsManager(command, reconciler);
@@ -92,17 +91,10 @@ export default function App() {
         setIsMaximized={setIsMaximized}
         isEditMode={isEditMode}
         toggleEditMode={() => setIsEditMode(!isEditMode)}
-        handleOpenSettingsClick={
-          () => pluginManagerRef.current && pluginManagerRef.current.openSettings()
+        handleOpenSettingsClick={() =>
+          pluginManagerRef.current && pluginManagerRef.current.openSettings()
         }
       />
-      <button
-        onClick={() => {
-          console.log({ pluginState, pluginManagerRef });
-        }}
-      >
-        print state
-      </button>
       <DndContext
         onDragStart={(ev) => {
           setCurrentDraggingItem(ev.active);
@@ -177,14 +169,15 @@ export default function App() {
               : movedItemData.identifier
           );
 
-          pluginManagerRef.current && pluginManagerRef.current.syncLayout(clonedLayout).then(e => {
-            if (!e.success) {
-              throw new Error("failed to sync layout: " + e.reason)
-            }
-            console.log("sync layout resp", e.data)
+          pluginManagerRef.current &&
+            pluginManagerRef.current.syncLayout(clonedLayout).then((e) => {
+              if (!e.success) {
+                throw new Error("failed to sync layout: " + e.reason);
+              }
+              console.log("sync layout resp", e.data);
 
-            setLayout(e.data)
-          })
+              setLayout(e.data);
+            });
         }}
       >
         <PluginStateCtx.Provider value={pluginState}>

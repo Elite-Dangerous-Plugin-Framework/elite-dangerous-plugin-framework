@@ -3,7 +3,10 @@ import {
   JournalEventItemV1Alpha,
   PluginContextV1Alpha,
 } from "@elite-dangerous-plugin-framework/core";
-import { PluginContextV1AlphaCapabilities, PluginContextV1AlphaCapabilitiesSettings } from "@elite-dangerous-plugin-framework/core/dist/v1alpha/context";
+import {
+  PluginContextV1AlphaCapabilities,
+  PluginContextV1AlphaCapabilitiesSettings,
+} from "@elite-dangerous-plugin-framework/core/dist/v1alpha/context";
 import { CommandWrapper } from "../commands/commandWrapper";
 
 export class PluginContextV1AlphaImpl implements PluginContextV1Alpha {
@@ -17,8 +20,15 @@ export class PluginContextV1AlphaImpl implements PluginContextV1Alpha {
    *
    * Use the context already provided to you in the Web Component constructor.
    */
-  public constructor(commands: CommandWrapper, private assetBase: string, private pluginID: string, private capabilities: PluginContextV1AlphaCapabilities) {
-    this.#commands = commands
+  public constructor(
+    commands: CommandWrapper,
+    private assetBase: string,
+    // @ts-expect-error
+    private pluginID: string,
+    // @ts-expect-error
+    private capabilities: PluginContextV1AlphaCapabilities
+  ) {
+    this.#commands = commands;
   }
   #destroyed = false;
 
@@ -79,16 +89,19 @@ export class PluginContextV1AlphaImpl implements PluginContextV1Alpha {
     this.#shutdownListener = callback;
   }
 
-
-
   public async rereadCurrentJournals(): Promise<
     Record<string, JournalEventItemV1Alpha[]>
   > {
-    const result = await this.#commands.rereadActiveJournals()
+    const result = await this.#commands.rereadActiveJournals();
     if (!result.success) {
-      throw new Error("failed to reread active journals: " + result.reason)
+      throw new Error("failed to reread active journals: " + result.reason);
     }
-    return Object.fromEntries(result.data.map(e => ([e.cmdr, e.entries.map(f => ({ cmdr: e.cmdr, file: e.file, event: f }))])))
+    return Object.fromEntries(
+      result.data.map((e) => [
+        e.cmdr,
+        e.entries.map((f) => ({ cmdr: e.cmdr, file: e.file, event: f })),
+      ])
+    );
   }
 
   /**
@@ -98,19 +111,32 @@ export class PluginContextV1AlphaImpl implements PluginContextV1Alpha {
    * The instanceID also acts as Pointer to the Plugin State, which means we can get the Plugin ID that way.
    */
   public static async create(pluginId: string, commands: CommandWrapper) {
-    const [stateZod, importPathZod] = await Promise.all([commands.getPlugin(pluginId), commands.getImportPathForPlugin(pluginId)])
+    const [stateZod, importPathZod] = await Promise.all([
+      commands.getPlugin(pluginId),
+      commands.getImportPathForPlugin(pluginId),
+    ]);
     if (!stateZod.success) {
-      throw new Error("failed to get Plugin: " + stateZod.reason)
+      throw new Error("failed to get Plugin: " + stateZod.reason);
     }
     if (!importPathZod.success) {
-      throw new Error("failed to get Plugin Import Path: " + importPathZod.reason)
+      throw new Error(
+        "failed to get Plugin Import Path: " + importPathZod.reason
+      );
     }
 
-
-    const importPath = importPathZod.data.import
+    const importPath = importPathZod.data.import;
     const assetsBase = importPath.substring(0, importPath.lastIndexOf("/") + 1);
 
-    const ctx = new PluginContextV1AlphaImpl(commands, assetsBase, pluginId, PluginContextCapabilitiesV1AlphaImpl.create(commands, pluginId, assetsBase));
+    const ctx = new PluginContextV1AlphaImpl(
+      commands,
+      assetsBase,
+      pluginId,
+      PluginContextCapabilitiesV1AlphaImpl.create(
+        commands,
+        pluginId,
+        assetsBase
+      )
+    );
     return {
       ctx,
       notifyDestructor: async () => ctx.#notifyDestroy(),
@@ -118,51 +144,60 @@ export class PluginContextV1AlphaImpl implements PluginContextV1Alpha {
   }
 
   get assetsBase(): string {
-    return this.assetBase
+    return this.assetBase;
   }
 }
 
-export class PluginContextCapabilitiesV1AlphaImpl implements PluginContextV1AlphaCapabilities {
+export class PluginContextCapabilitiesV1AlphaImpl
+  implements PluginContextV1AlphaCapabilities
+{
   #assetBase: string;
-  constructor(private settings: PluginContextV1AlphaCapabilitiesSettings, assetBase: string) {
-    this.#assetBase = assetBase
+  constructor(
+    private settings: PluginContextV1AlphaCapabilitiesSettings,
+    assetBase: string
+  ) {
+    this.#assetBase = assetBase;
   }
   get Settings(): PluginContextV1AlphaCapabilitiesSettings {
-    return this.settings
+    return this.settings;
   }
 
   get assetsBase() {
-    return this.#assetBase
+    return this.#assetBase;
   }
 
   static create(command: CommandWrapper, pluginId: string, assetsBase: string) {
-
-    const settings = new PluginContextV1AlphaCapabilitiesSettingsImpl(command, pluginId)
-    return new PluginContextCapabilitiesV1AlphaImpl(settings, assetsBase)
+    const settings = new PluginContextV1AlphaCapabilitiesSettingsImpl(
+      command,
+      pluginId
+    );
+    return new PluginContextCapabilitiesV1AlphaImpl(settings, assetsBase);
   }
 }
 
-export class PluginContextV1AlphaCapabilitiesSettingsImpl implements PluginContextV1AlphaCapabilitiesSettings {
+export class PluginContextV1AlphaCapabilitiesSettingsImpl
+  implements PluginContextV1AlphaCapabilitiesSettings
+{
+  constructor(private commands: CommandWrapper, private pluginId: string) {}
 
-  constructor(private commands: CommandWrapper, private pluginId: string) { }
-
-
-  async writeSetting(key: string, value: any | undefined): Promise<unknown | undefined> {
-    const resp = await this.commands.writeSetting(this.pluginId, key, value)
+  async writeSetting(
+    key: string,
+    value: any | undefined
+  ): Promise<unknown | undefined> {
+    const resp = await this.commands.writeSetting(this.pluginId, key, value);
     if (!resp.success) {
-      throw new Error("failed to get setting: " + resp.reason)
+      throw new Error("failed to get setting: " + resp.reason);
     }
-    return resp.data.value
+    return resp.data.value;
   }
   async getSetting(key: string): Promise<unknown | undefined> {
-    const resp = await this.commands.readSetting(this.pluginId, key)
+    const resp = await this.commands.readSetting(this.pluginId, key);
     if (!resp.success) {
-      throw new Error("failed to get setting: " + resp.reason)
+      throw new Error("failed to get setting: " + resp.reason);
     }
-    return resp.data.value
+    return resp.data.value;
   }
-  registerSettingsChangedListener(callback: (key: string) => void): void {
+  registerSettingsChangedListener(_: (key: string) => void): void {
     throw new Error("Method not implemented.");
   }
-
 }

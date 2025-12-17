@@ -7,11 +7,13 @@ use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Runtime};
 use tauri_plugin_store::StoreBuilder;
 use tracing::error;
+
+use super::internal_plugin_ids;
 #[derive(Debug, Serialize, Deserialize, Default)]
 /// This contains the entire **generic** Configurable State for a plugin.  
 /// Settings read/set from the Plugins themselves are managed separately
 pub(crate) struct GenericPluginSettings {
-    /// If true, the Plugin is running. If false, it's not running
+    /// If true, the Plugin is running. If false, it's not running.
     pub(crate) enabled: bool,
     /// Defaults to false. The first time this plugin is discovered a popup is made, which will tell you about the Plugin's config, required permissions, etc
     /// with an option to quickly enable this plugin
@@ -77,6 +79,8 @@ impl GenericPluginSettings {
             Err(e) => return Err(anyhow::anyhow!("failed to build store: {e}")),
         };
 
+        let embedded_plugins = internal_plugin_ids();
+
         Ok(ids_to_check
             .iter()
             .filter_map(|id| {
@@ -85,13 +89,19 @@ impl GenericPluginSettings {
                         Ok(x) => x,
                         Err(_) => return None,
                     },
-                    None => return None,
+                    None => {
+                        if embedded_plugins.contains(&id.as_str()) {
+                            // if the plugin has no config yet, we make sure to start it at init IF it is an embedded plugin.
+                            return Some(id.clone());
+                        } else {
+                            return None;
+                        }
+                    }
                 };
 
-                if resp.enabled {
-                    Some(id.clone())
-                } else {
-                    None
+                match resp.enabled {
+                    true => Some(id.clone()),
+                    false => None,
                 }
             })
             .collect())

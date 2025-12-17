@@ -4,14 +4,12 @@ use std::{
     fs::File,
     path::{Path, PathBuf},
     str::FromStr,
-    sync::Arc,
+    sync::{Arc, OnceLock},
     time::Duration,
 };
 
-use aes_gcm::Aes128Gcm;
 use anyhow::anyhow;
 use base64::{prelude::BASE64_STANDARD_NO_PAD, Engine};
-use bimap::BiHashMap;
 use chrono::{TimeDelta, Utc};
 use dirs::data_local_dir;
 use generic_plugin_settings::GenericPluginSettings;
@@ -24,10 +22,10 @@ use reconciler_utils::ReconcileAction;
 use schemars::JsonSchema;
 use serde::Serialize;
 use serde_json::{json, Value};
-use tauri::{AppHandle, Manager, Runtime, Wry};
+use tauri::{path::BaseDirectory, AppHandle, Manager, Runtime, Wry};
 use tauri_plugin_store::StoreExt;
 use tokio::sync::RwLock;
-use tracing::{debug, error, info, instrument, warn};
+use tracing::{error, info, instrument, warn};
 
 pub(crate) mod commands;
 pub(crate) mod commands_armor;
@@ -37,6 +35,15 @@ pub(crate) mod plugin_manifest;
 pub(crate) mod plugin_settings;
 mod reconciler_utils;
 
+/// Lazy-init'd list of all internal plugins. There might be better ways to do it, but for now this is hand-adjusted.
+/// If we add a plugin here we **MUST** also ensure that it is present in the plugins folder at
+/// `assets/plugins/$pluginID`
+pub(crate) fn internal_plugin_ids() -> &'static [&'static str] {
+    static MEM: OnceLock<Vec<&str>> = OnceLock::new();
+    MEM.get_or_init(|| vec!["core"]).as_slice()
+}
+
+/// This function never finishes. It spawns a reconciler, then polls in loop for changes. Expected to be run in a thread / task.
 #[instrument(skip(app_state))]
 pub(super) async fn spawn_reconciler_blocking(app_state: &AppHandle<Wry>) -> () {
     let (tx, rx) = std::sync::mpsc::channel();
@@ -52,6 +59,9 @@ pub(super) async fn spawn_reconciler_blocking(app_state: &AppHandle<Wry>) -> () 
         })
         .unwrap_or(data_local_dir().unwrap().join("edpf-plugins"));
     let moved_user_plugin_dir = user_plugin_dir.clone();
+
+    // Note that we only watch for changes in User plugins.
+    // We make the assumption that bundled plugins do not change over time.
     let mut watcher = RecommendedWatcher::new(
         move |res: Result<notify::Event, notify::Error>| match res {
             Ok(ev) => {
@@ -374,7 +384,14 @@ impl PluginsState {
             })
             .unwrap_or(data_local_dir().unwrap().join("edpf-plugins"));
 
-        let user_plugin_manifests_and_ids_from_dir =
+        let internal_plugins = internal_plugin_ids();
+
+        enum PluginUnit {
+            UserDefined { path: PathBuf, plugin_id: String },
+            Embedded { plugin_id: String },
+        }
+
+        let mut plugin_ids_and_paths =
             glob::glob(user_plugin_dir.join("*/manifest.json").to_str().unwrap())
                 .map_err(|x| anyhow!("failed to get user plugin manifests: {x}"))?
                 .flatten()
@@ -385,20 +402,27 @@ impl PluginsState {
                         if plugin_id
                             .chars()
                             .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-')
+                            && !internal_plugins.contains(&plugin_id.as_str())
                         {
-                            return Some((path, plugin_id));
+                            return Some(PluginUnit::UserDefined { path, plugin_id });
                         }
                     }
                     None
                 })
                 .collect_vec();
+        plugin_ids_and_paths.extend(internal_plugins.iter().map(|x| PluginUnit::Embedded {
+            plugin_id: x.to_string(),
+        }));
 
-        let all_known_user_plugin_ids = user_plugin_manifests_and_ids_from_dir
+        let all_known_plugin_ids = plugin_ids_and_paths
             .iter()
-            .map(|x| x.1.clone())
+            .map(|x| match x {
+                PluginUnit::UserDefined { path: _, plugin_id } => plugin_id.clone(),
+                PluginUnit::Embedded { plugin_id } => plugin_id.clone(),
+            })
             .collect_vec();
         let active_plugin_ids: Vec<String> =
-            GenericPluginSettings::get_active_ids(app_handle, &all_known_user_plugin_ids)?;
+            GenericPluginSettings::get_active_ids(app_handle, &all_known_plugin_ids)?;
         let active_plugin_ids_set: HashSet<_> = active_plugin_ids.into_iter().collect();
 
         // This is what we know internally
@@ -416,22 +440,59 @@ impl PluginsState {
         let mut actions_map = HashMap::new();
 
         // Here we define the **expected** state. We write this to discovered_user_plugins
-        for (path, plugin_id) in user_plugin_manifests_and_ids_from_dir {
-            let manifest = match PluginState::get_manifest(&path) {
-                Ok(x) => x,
-                Err(e) => {
-                    error!(
-                        "failed to get plugin manifest at {}: {}",
-                        path.display(),
-                        &e
-                    );
-                    failed_path_bufs.push((path, e));
-                    continue;
+        for entry in &plugin_ids_and_paths {
+            let (manifest, plugin_dir, plugin_id) = match entry {
+                PluginUnit::UserDefined { path, plugin_id } => {
+                    match PluginState::get_manifest(path) {
+                        Ok(x) => (x, path.parent().unwrap().to_path_buf(), plugin_id.clone()),
+                        Err(e) => {
+                            error!(
+                                "failed to get plugin manifest at {}: {}",
+                                path.display(),
+                                &e
+                            );
+                            failed_path_bufs.push((path, e));
+                            continue;
+                        }
+                    }
+                }
+                PluginUnit::Embedded { plugin_id } => {
+                    let path = match app_handle.path().resolve(
+                        format!("assets/plugins/{}/manifest.json", plugin_id),
+                        BaseDirectory::Resource,
+                    ) {
+                        Ok(x) => x,
+                        Err(x) => {
+                            error!("failed to resolve path to plugin manifest: {x}");
+                            continue;
+                        }
+                    };
+
+                    let manifest = match PluginState::get_manifest(&path) {
+                        Ok(x) => x,
+                        Err(e) => {
+                            error!(
+                                "failed to get embedded plugin manifest for {}: {}",
+                                plugin_id, &e
+                            );
+                            continue;
+                        }
+                    };
+                    (
+                        manifest,
+                        path.parent().unwrap().to_path_buf(),
+                        plugin_id.clone(),
+                    )
                 }
             };
-            debug!("found valid manifest @ {}", path.display());
 
-            let frontend_hash = PluginState::get_frontend_dir_hash(&path);
+            let frontend_hash = match entry {
+                PluginUnit::UserDefined { path, plugin_id: _ } => {
+                    PluginState::get_frontend_dir_hash(path)
+                }
+                PluginUnit::Embedded { plugin_id: _ } => Some("embedded".into()),
+            };
+
             let desired_state = PluginState {
                 current_state: match active_plugin_ids_set.contains(&plugin_id) {
                     true => match &frontend_hash {
@@ -443,9 +504,12 @@ impl PluginsState {
                     false => PluginCurrentState::Disabled {},
                 },
                 frontend_hash: frontend_hash.unwrap_or("missing".into()),
-                plugin_dir: path.parent().unwrap().to_path_buf(),
+                plugin_dir: plugin_dir.clone(),
                 manifest,
-                source: PluginStateSource::UserProvided,
+                source: match entry {
+                    PluginUnit::UserDefined { .. } => PluginStateSource::UserProvided,
+                    PluginUnit::Embedded { .. } => PluginStateSource::Embedded,
+                },
                 id: plugin_id.clone(),
             };
 
@@ -455,7 +519,7 @@ impl PluginsState {
                 error!(
                     "Plugin conflict! The following manifests share the plugin ID '{}': {}, {}",
                     plugin_id,
-                    path.display(),
+                    plugin_dir.display(),
                     x.manifest_path().display()
                 );
                 continue;

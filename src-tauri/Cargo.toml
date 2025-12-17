@@ -1,8 +1,8 @@
 [package]
 name = "elite-dangerous-plugin-framework"
 version = "0.1.0"
-description = "A Tauri App"
-authors = ["you"]
+description = "A cross-platform plugin runner for Elite: Dangerous 3rd party tooling"
+authors = ["CMDR-WDX"]
 edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
@@ -19,9 +19,10 @@ schemars = "1.0.4"
 sha2 = "0.10.9"
 tauri-build = { version = "2", features = [] }
 ureq = "3.0.12"
+tauri-cli = "2.9.6"
 
 [dependencies]
-tauri = { version = "2", features = [ "tray-icon"] }
+tauri = { version = "2", features = ["tray-icon"] }
 tauri-plugin-opener = "2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
@@ -40,7 +41,8 @@ flate2 = "1.1.2"
 tar = "0.4.44"
 tempfile = "3.20.0"
 sha2 = "0.10.9"
-zip = "4.3.0"
+# zip must have default-features disabled as LZMA is misbehaving.
+zip = { version = "4.3.0", default-features = false, features = ["deflate"] }
 tokio = { version = "1.47.1", features = ["process"] }
 mime_guess = "2.0.5"
 axum = { version = "0.8.4", features = ["http2"] }

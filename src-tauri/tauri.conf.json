@@ -4,9 +4,9 @@
   "version": "0.1.0",
   "identifier": "elite-dangerous-plugin-framework.app",
   "build": {
-    "beforeDevCommand": "npm run dev",
+    "beforeDevCommand": "bun run build:plugins && bun run dev",
     "devUrl": "http://localhost:1420",
-    "beforeBuildCommand": "npm run build",
+    "beforeBuildCommand": "bun run build && bun run build:plugins",
     "frontendDist": "../dist"
   },
   "app": {
@@ -33,6 +33,10 @@
       "icons/128x128@2x.png",
       "icons/icon.icns",
       "icons/icon.ico"
+    ],
+    "resources": [
+      "./assets/plugins/*/frontend/*",
+      "./assets/plugins/*/manifest.json"
     ]
   }
 }

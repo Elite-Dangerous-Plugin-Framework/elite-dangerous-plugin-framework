@@ -1,4 +1,3 @@
-import { invoke } from "@tauri-apps/api/core";
 import {
   CloseIcon,
   EditPlugins,
@@ -7,7 +6,7 @@ import {
   SettingsIcon,
 } from "../icons/navbar";
 import { Window } from "@tauri-apps/api/window";
-import { openPath, openUrl } from "@tauri-apps/plugin-opener";
+import { openUrl } from "@tauri-apps/plugin-opener";
 
 interface HeaderProps {
   appWin: Window | undefined;
@@ -15,7 +14,7 @@ interface HeaderProps {
   setIsMaximized: (m: boolean) => void;
   isEditMode: boolean;
   toggleEditMode: () => void;
-  handleOpenSettingsClick: () => void
+  handleOpenSettingsClick: () => void;
 }
 export function Header({
   appWin,
@@ -28,14 +27,15 @@ export function Header({
   return (
     <header
       data-tauri-drag-region
-      className={`flex justify-end gap-1 items-stretch ${isEditMode ? "bg-green-900" : "group-hover:visible invisible"
-        } cursor-move`}
+      className={`flex justify-end gap-1 items-stretch ${
+        isEditMode ? "bg-green-900" : "group-hover:visible invisible"
+      } cursor-move`}
     >
       <button
         title="Open Settings"
         onClick={() => {
-          console.info("e")
-          handleOpenSettingsClick()
+          console.info("e");
+          handleOpenSettingsClick();
         }}
         className="px-2 cursor-pointer hover:bg-white/10"
       >
@@ -44,8 +44,9 @@ export function Header({
       <button
         onClick={() => toggleEditMode()}
         title="Change Plugin Arrangement"
-        className={`px-2 cursor-pointer  ${isEditMode ? "bg-green-600 hover:bg-green-500" : "hover:bg-white/10"
-          }`}
+        className={`px-2 cursor-pointer  ${
+          isEditMode ? "bg-green-600 hover:bg-green-500" : "hover:bg-white/10"
+        }`}
       >
         <EditPlugins className="w-6 h-6" editing={isEditMode} />
       </button>
