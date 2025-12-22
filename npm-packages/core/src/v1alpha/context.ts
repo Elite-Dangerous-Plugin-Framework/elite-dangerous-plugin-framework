@@ -1,4 +1,5 @@
 import type { JournalEventItemV1Alpha } from "./journalEvent.js";
+import { PluginManifestV1Alpha, PluginManifestV1AlphaWithId } from "./manifest.js";
 
 /**
  * This is the main object your Plugin interacts with EDPF
@@ -31,7 +32,15 @@ export interface PluginContextV1Alpha {
    */
   registerShutdownListener(callback: () => Promise<void>): void;
 
-
+  /**
+   * ## Used to open a URL in the User's browser
+   * 
+   * Note that using a `<a href="…"/>` is not possible as that would cause In-Webview navigation. Instead, you have to instruct the OS to open the resource outside the webview.
+   * This Command does just that. Do note that only the `http` and `https` protocols are supported. 
+   * 
+   * This action is considered a Safe action and is accessible to all plugins without additional permissions
+   */
+  openUrl(url: string): Promise<void>
 
   /**
    * ## Request a reread of the current Journal
@@ -42,8 +51,11 @@ export interface PluginContextV1Alpha {
    */
   rereadCurrentJournals(): Promise<Record<string, JournalEventItemV1Alpha[]>>;
 
-
-
+  /**
+   * This is useful for writing plugins in a more abstract manner. (e.g. not hardcoding settings keys).
+   * The property exposes the Plugin Manifest
+   */
+  get pluginMeta(): PluginManifestV1AlphaWithId
 
   /**
    * Your Plugin is exposed via an asset server that is running on localhost. The Port is not stable. Use this readonly property to get the base URL.

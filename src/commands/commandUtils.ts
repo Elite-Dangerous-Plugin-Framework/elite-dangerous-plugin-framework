@@ -1,3 +1,5 @@
+import { openUrl } from "@tauri-apps/plugin-opener";
+
 export function base64ToBytesNoPadding(b64: string) {
   return Uint8Array.fromBase64(b64) as Uint8Array;
 }

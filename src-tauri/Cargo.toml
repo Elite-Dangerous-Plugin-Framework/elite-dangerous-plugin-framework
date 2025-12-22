@@ -1,6 +1,6 @@
 [package]
 name = "elite-dangerous-plugin-framework"
-version = "0.1.0"
+version = "0.0.1"
 description = "A cross-platform plugin runner for Elite: Dangerous 3rd party tooling"
 authors = ["CMDR-WDX"]
 edition = "2021"

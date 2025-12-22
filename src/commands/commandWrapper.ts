@@ -243,6 +243,15 @@ export class CommandWrapper {
     return parsedEncrypted.data
   }
 
+  public async openUrl(pluginId: string, url: string) {
+    const { iv: reqIv, payload: reqPayload } = await encryptPayload(this.#key, { url, pluginId })
+    const response = await invoke("open_url", { iv: reqIv, payload: reqPayload })
+    console.log(response)
+    return z.discriminatedUnion("success", [z.object({ success: z.literal(true) }), z.object({
+      success: z.literal(false), reason: z.string()
+    })]).parse(response)
+  }
+
   public async getPlugin(pluginId: string) {
     const { iv: reqIv, payload: reqPayload } = await encryptPayload(this.#key, { pluginId })
 
@@ -415,7 +424,7 @@ export class CommandWrapper {
       file: z.string(),
       entries: z.array(z.string())
     })).safeParse(payload)
-    if (verifiedPayload.error) {
+    if (!verifiedPayload.success) {
       return {
         success: false as const,
         reason: "DECRYPTED_RESPONSE_STRUCTURE_INVALID",

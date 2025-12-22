@@ -9,7 +9,6 @@ ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
   <HashRouter>
     <Routes>
       <Route path="/" element={<App />} />
-
       <Route path="/edit" element={<EditPluginMain />} />
       <Route path="/settings" element={<Settings />} />
     </Routes>

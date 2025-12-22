@@ -2,7 +2,10 @@
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
   "description": "Capability for the main window",
-  "windows": ["main", "settings"],
+  "windows": [
+    "main",
+    "settings"
+  ],
   "permissions": [
     "core:default",
     "opener:default",
@@ -15,6 +18,17 @@
     "core:window:allow-minimize",
     "core:event:allow-listen",
     "core:event:allow-unlisten",
-    "opener:allow-default-urls"
+    "opener:allow-default-urls",
+    {
+      "identifier": "opener:allow-open-url",
+      "allow": [
+        {
+          "url": "https://*"
+        },
+        {
+          "url": "http://*"
+        }
+      ]
+    }
   ]
 }

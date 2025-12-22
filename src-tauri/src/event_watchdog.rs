@@ -176,7 +176,7 @@ pub(super) async fn event_watchdog(app_handle: &AppHandle<Wry>) -> ! {
                             Ok(x) => {
                                 let ev = LogEventWithContext {
                                     event: serde_json::to_string(&x).unwrap(),
-                                    source: file_clone.clone(),
+                                    file: file_clone.clone(),
                                     cmdr: cmdr.clone(),
                                 };
                                 if let Err(e) = events_tx.send(ev).await {
@@ -247,6 +247,6 @@ fn get_last_event_ts_and_name_from_log(
 pub(crate) struct LogEventWithContext {
     // contains a stringified JSON
     pub(crate) event: String,
-    pub(crate) source: PathBuf,
+    pub(crate) file: PathBuf,
     pub(crate) cmdr: String,
 }
