@@ -4,16 +4,21 @@
   "type": "module",
   "devDependencies": {
     "@tsconfig/strictest": "^2.0.8",
-    "@types/bun": "latest"
+    "@types/bun": "latest",
+    "tailwindcss": "^4.1.18"
   },
   "scripts": {
-    "build": "bun build --outfile=\"../frontend/index.js\" index.ts && cp style.css ../frontend/style.css"
+    "build": "bun build --outfile=\"../frontend/index.js\" index.tsx && bunx @tailwindcss/cli -i style.css -o ../frontend/style.css"
   },
   "peerDependencies": {
     "typescript": "^5"
   },
   "dependencies": {
     "@elite-dangerous-plugin-framework/core": "../../../../../npm-packages/core",
-    "@elite-dangerous-plugin-framework/journal": "../../../../../npm-packages/journal"
+    "@elite-dangerous-plugin-framework/journal": "../../../../../npm-packages/journal",
+    "@types/react-dom": "^19.2.3",
+    "react": "^19.2.3",
+    "react-dom": "^19.2.3",
+    "zod": "^4.2.1"
   }
 }

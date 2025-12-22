@@ -4,6 +4,7 @@ use dirs::data_local_dir;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use tauri::{Emitter, Manager, Runtime};
+use tauri_plugin_opener::OpenerExt;
 use tauri_plugin_store::StoreExt;
 use tokio::sync::RwLock;
 use tracing::{error, warn};
@@ -43,6 +44,34 @@ pub(crate) async fn fetch_all_plugins<R: Runtime>(
     match commands_armor::encrypt(&data.root_token, &response) {
         Ok(encrypted_with_iv) => encrypted_with_iv,
         Err(e) => e.into(),
+    }
+}
+
+#[tauri::command]
+pub(crate) async fn open_url<R: Runtime>(
+    app: tauri::AppHandle<R>,
+    payload: String,
+    iv: String,
+) -> serde_json::Value {
+    let state = app.state::<Arc<RwLock<PluginsState>>>();
+
+    #[derive(Deserialize)]
+    #[serde(rename_all = "camelCase")]
+    struct Input {
+        plugin_id: String, // unused, maybe relevant later
+        url: String,
+    }
+
+    let data = state.read().await;
+
+    let url = match commands_armor::decrypt_str::<Input>(&data.root_token, &iv, &payload) {
+        Err(e) => return e.into(),
+        Ok(data) => data.url,
+    };
+
+    match app.opener().open_url(url, None::<&str>) {
+        Ok(_) => json!({"success": true}),
+        Err(x) => json!({"success": false, "reason": x}),
     }
 }
 

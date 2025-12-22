@@ -8,6 +8,8 @@ import {
   PluginContextV1AlphaCapabilitiesSettings,
 } from "@elite-dangerous-plugin-framework/core/dist/v1alpha/context";
 import { CommandWrapper } from "../commands/commandWrapper";
+import z from "zod";
+import { PluginManifestV1AlphaWithId } from "@elite-dangerous-plugin-framework/core/dist/v1alpha/manifest";
 
 export class PluginContextV1AlphaImpl implements PluginContextV1Alpha {
   /**
@@ -23,12 +25,20 @@ export class PluginContextV1AlphaImpl implements PluginContextV1Alpha {
   public constructor(
     commands: CommandWrapper,
     private assetBase: string,
-    // @ts-expect-error
-    private pluginID: string,
+    private manifest: PluginManifestV1AlphaWithId,
     // @ts-expect-error
     private capabilities: PluginContextV1AlphaCapabilities
   ) {
     this.#commands = commands;
+  }
+  async openUrl(url: string): Promise<void> {
+    const resp = await this.#commands.openUrl(this.manifest.id, url)
+    if (!resp.success) {
+      throw new Error("failed to open url: " + resp.reason)
+    }
+  }
+  get pluginMeta(): PluginManifestV1AlphaWithId {
+    return structuredClone(this.manifest)
   }
   #destroyed = false;
 
@@ -72,7 +82,14 @@ export class PluginContextV1AlphaImpl implements PluginContextV1Alpha {
       throw new Error("Event Listener can only be registered once per Plugin");
     }
     const unlisten = listen("journal_events", (ev) => {
-      callback(ev.payload as any);
+      const verifiedPayload = z.array(z.object({
+        cmdr: z.string(),
+        file: z.string(),
+        event: z.string()
+      })).parse(ev.payload)
+
+
+      callback(verifiedPayload as any);
     });
     this.#eventListenerDestructor = "awaitingResolve";
     unlisten.then((e) => (this.#eventListenerDestructor = e));
@@ -123,18 +140,17 @@ export class PluginContextV1AlphaImpl implements PluginContextV1Alpha {
         "failed to get Plugin Import Path: " + importPathZod.reason
       );
     }
-
     const importPath = importPathZod.data.import;
     const assetsBase = importPath.substring(0, importPath.lastIndexOf("/") + 1);
 
     const ctx = new PluginContextV1AlphaImpl(
       commands,
       assetsBase,
-      pluginId,
+      { ...stateZod.data.manifest, id: pluginId },
       PluginContextCapabilitiesV1AlphaImpl.create(
         commands,
         pluginId,
-        assetsBase
+        assetsBase,
       )
     );
     return {
@@ -149,12 +165,12 @@ export class PluginContextV1AlphaImpl implements PluginContextV1Alpha {
 }
 
 export class PluginContextCapabilitiesV1AlphaImpl
-  implements PluginContextV1AlphaCapabilities
-{
+  implements PluginContextV1AlphaCapabilities {
   #assetBase: string;
+
   constructor(
     private settings: PluginContextV1AlphaCapabilitiesSettings,
-    assetBase: string
+    assetBase: string,
   ) {
     this.#assetBase = assetBase;
   }
@@ -176,9 +192,8 @@ export class PluginContextCapabilitiesV1AlphaImpl
 }
 
 export class PluginContextV1AlphaCapabilitiesSettingsImpl
-  implements PluginContextV1AlphaCapabilitiesSettings
-{
-  constructor(private commands: CommandWrapper, private pluginId: string) {}
+  implements PluginContextV1AlphaCapabilitiesSettings {
+  constructor(private commands: CommandWrapper, private pluginId: string) { }
 
   async writeSetting(
     key: string,

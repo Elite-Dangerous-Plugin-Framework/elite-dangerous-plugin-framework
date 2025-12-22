@@ -127,6 +127,7 @@ pub fn run() {
             plugins::commands::write_setting,
             plugins::commands::read_setting,
             plugins::commands::get_plugin,
+            plugins::commands::open_url,
             plugins::get_root_token_once,
         ])
         .run(tauri::generate_context!())

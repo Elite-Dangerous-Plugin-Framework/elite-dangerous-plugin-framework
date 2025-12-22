@@ -5,13 +5,15 @@
     "jsx": "react-jsx",
     "lib": [
       "es2023",
-      "DOM"
+      "DOM",
+      "ESNext"
     ],
     "moduleDetection": "force",
     "module": "preserve",
     "moduleResolution": "bundler",
     "resolveJsonModule": true,
     "types": [],
+    "strict": true,
     "declaration": true,
     "emitDeclarationOnly": true,
     "verbatimModuleSyntax": true,
