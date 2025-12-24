@@ -24,6 +24,7 @@ const EncryptedCommandEmptyResponse = z.discriminatedUnion("success", [ErrorZod,
  * This util handled encryption and decryption for commands. It is highly priviledged and mustn't be exposed to plugins!
  */
 export class CommandWrapper {
+
   #key: CryptoKey;
   constructor(key: CryptoKey) {
     this.#key = key;
@@ -346,7 +347,13 @@ export class CommandWrapper {
     const { iv: reqIv, payload: reqPayload } = await encryptPayload(this.#key, { pluginId, key })
 
     const response = await invoke("read_setting", { iv: reqIv, payload: reqPayload })
+    return await this.decryptSettingsPayload(response)
+  }
 
+  /**
+   * Not a command directly
+   */
+  public async decryptSettingsPayload(response: unknown) {
     const parsedEncrypted = EncryptedCommandResponse.safeParse(response)
 
     if (!parsedEncrypted.success) {

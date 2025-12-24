@@ -61,26 +61,28 @@ export class PluginContextV1AlphaImpl implements PluginContextV1Alpha {
    *  **This is managed by EDPF (Plugins don't have to care about it)**
    */
   async #notifyDestroy() {
-    if (typeof this.#shutdownListener === "function") {
+    if (Object.keys(this.#shutdownListener).length >= 0) {
+      const destructors: Promise<void>[] = Object.values(this.#shutdownListener)
       await Promise.race([
         new Promise<void>((res) => setTimeout(() => res(), 1_000)),
-        this.#shutdownListener(),
+        Promise.allSettled(destructors)
       ]);
     }
-    if (typeof this.#eventListenerDestructor === "function") {
-      this.#eventListenerDestructor();
-    }
+
+    this.#eventListenerDestructors = {}
     this.#destroyed = true;
   }
 
-  #eventListenerDestructor: undefined | "awaitingResolve" | (() => void);
+  /**
+   * Contains all Destructors, for all Listeners the PluginContext
+   */
+  #eventListenerDestructors: Record<symbol, "awaitingResolve" | (() => void)> = {}
+
 
   public registerEventListener(
     callback: (events: JournalEventItemV1Alpha[]) => void
-  ) {
-    if (this.#eventListenerDestructor) {
-      throw new Error("Event Listener can only be registered once per Plugin");
-    }
+  ): () => void {
+
     const unlisten = listen("journal_events", (ev) => {
       const verifiedPayload = z.array(z.object({
         cmdr: z.string(),
@@ -91,19 +93,22 @@ export class PluginContextV1AlphaImpl implements PluginContextV1Alpha {
 
       callback(verifiedPayload as any);
     });
-    this.#eventListenerDestructor = "awaitingResolve";
-    unlisten.then((e) => (this.#eventListenerDestructor = e));
+    const sym = Symbol()
+    this.#eventListenerDestructors[sym] = "awaitingResolve"
+    unlisten.then((e) => (this.#eventListenerDestructors[sym] = e));
+    return () => {
+      this.#eventListenerDestructors[sym] && typeof this.#eventListenerDestructors[sym] === "function" && this.#eventListenerDestructors[sym]()
+      delete this.#eventListenerDestructors[sym]
+    }
   }
 
-  #shutdownListener: undefined | (() => Promise<void>);
-
-  public registerShutdownListener(callback: () => Promise<void>) {
-    if (this.#shutdownListener) {
-      throw new Error(
-        "Shutdown Listener can only be registered once per Plugin"
-      );
+  #shutdownListener: Record<symbol, (() => Promise<void>)> = {}
+  public registerShutdownListener(callback: () => Promise<void>): () => void {
+    const sym = Symbol()
+    this.#shutdownListener[sym] = callback
+    return () => {
+      delete this.#shutdownListener[sym]
     }
-    this.#shutdownListener = callback;
   }
 
   public async rereadCurrentJournals(): Promise<
@@ -195,24 +200,63 @@ export class PluginContextV1AlphaCapabilitiesSettingsImpl
   implements PluginContextV1AlphaCapabilitiesSettings {
   constructor(private commands: CommandWrapper, private pluginId: string) { }
 
-  async writeSetting(
+  async writeSetting<T>(
     key: string,
-    value: any | undefined
-  ): Promise<unknown | undefined> {
+    value: T | undefined
+  ): Promise<T | undefined> {
     const resp = await this.commands.writeSetting(this.pluginId, key, value);
     if (!resp.success) {
       throw new Error("failed to get setting: " + resp.reason);
     }
     return resp.data.value;
   }
-  async getSetting(key: string): Promise<unknown | undefined> {
+  async getSetting<T>(key: string): Promise<T | undefined> {
     const resp = await this.commands.readSetting(this.pluginId, key);
     if (!resp.success) {
       throw new Error("failed to get setting: " + resp.reason);
     }
     return resp.data.value;
   }
-  registerSettingsChangedListener(_: (key: string) => void): void {
-    throw new Error("Method not implemented.");
+
+  /**
+   * Contains all Destructors, for all Listeners the PluginContext
+   */
+  #eventListenerDestructors: Record<symbol, "awaitingResolve" | (() => void)> = {}
+
+
+  registerSettingsChangedListener(callback: (key: string, value: unknown | undefined) => void): () => void {
+    const sym = Symbol()
+    this.#eventListenerDestructors[sym] = "awaitingResolve"
+    listen("settings_update", async ({ payload }) => {
+      const decrypted = await this.commands.decryptSettingsPayload(payload)
+      if (!decrypted || !decrypted.success) {
+        console.error("failed to RX settings update", { reason: decrypted.reason })
+        return
+      }
+
+      const segments = decrypted.data.key.split(".")
+      if (segments.length < 2) {
+        // wont happen, but defensive programming and all that
+        console.error("Settings key contains less than 2 segments", { data: decrypted.data })
+        return
+      }
+
+      const firstCharLastSegment = segments.findLast(() => true)![0];
+
+      const canRead = (segments[0] === this.pluginId) || firstCharLastSegment === firstCharLastSegment.toUpperCase()
+      if (!canRead) {
+        // This setting change need not concern this plugin
+        return
+      }
+      callback(decrypted.data.key, decrypted.data.value)
+    }).then(e => this.#eventListenerDestructors[sym] = e)
+    return () => {
+      this.#eventListenerDestructors[sym] && typeof this.#eventListenerDestructors[sym] === "function" && this.#eventListenerDestructors[sym]()
+      delete this.#eventListenerDestructors[sym]
+    }
+  }
+  public destroy() {
+    Object.values(this.#eventListenerDestructors).forEach(e => typeof e === "function" && e())
+    this.#eventListenerDestructors = {}
   }
 }

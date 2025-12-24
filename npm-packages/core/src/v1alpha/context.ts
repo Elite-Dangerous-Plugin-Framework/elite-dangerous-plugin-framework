@@ -1,5 +1,11 @@
 import type { JournalEventItemV1Alpha } from "./journalEvent.js";
-import { PluginManifestV1Alpha, PluginManifestV1AlphaWithId } from "./manifest.js";
+import { PluginManifestV1AlphaWithId } from "./manifest.js";
+
+/**
+ * When subscribing to Listeners, you get back a function that you must invoke to stop listening.
+ * It is the caller's responsibility to do so. 
+ */
+export type Destructor = () => void;
 
 /**
  * This is the main object your Plugin interacts with EDPF
@@ -14,11 +20,11 @@ export interface PluginContextV1Alpha {
    *
    * Note that EDPF does Event batching, meaining you receive a List of Events if they happen in very quick succession.
    *
-   * Note this can only **be called once**.
+   * This can be called multiple times. On call, you get back a destructor that should be invoked to unregister.
    */
   registerEventListener(
     callback: (events: JournalEventItemV1Alpha[]) => void
-  ): void;
+  ): Destructor;
 
   /**
    * ## Used to block shutdown for cleanup tasks
@@ -28,9 +34,9 @@ export interface PluginContextV1Alpha {
    *
    * Cleanup is considered finished **when the Promise returns**. The callback is invoked once only
    *
-   * Note this can only **be called once**.
+   * This can be called multiple times. On call, you get back a destructor that should be invoked to unregister.
    */
-  registerShutdownListener(callback: () => Promise<void>): void;
+  registerShutdownListener(callback: () => Promise<void>): Destructor;
 
   /**
    * ## Used to open a URL in the User's browser
@@ -82,15 +88,6 @@ export interface PluginContextV1AlphaCapabilities {
    * always present, used to read and write settings.
    */
   get Settings(): PluginContextV1AlphaCapabilitiesSettings
-
-  /**
- * Your Plugin is exposed via an asset server that is running on localhost. The Port is not stable. Use this readonly property to get the base URL.
- *
- * You can then append the path to the file, relative to the `frontend` folder. Do note that relative escapes out of the `frontend` folder are not supported.
- *
- * `assetsBase` has always a `/` as a suffix.
- */
-  get assetsBase(): string;
 }
 
 export interface PluginContextV1AlphaCapabilitiesSettings {
@@ -107,7 +104,7 @@ export interface PluginContextV1AlphaCapabilitiesSettings {
  *    - `myPlugin.some.key` is private. Only your own plugin can read and edit it and get notified about it
  *    - `myPlugin.some.Key` is public. You can read and edit it, other plugins can read it
  */
-  writeSetting(key: string, value: undefined | unknown): Promise<undefined | unknown>;
+  writeSetting<T>(key: string, value: undefined | T): Promise<undefined | T>;
 
 
   /**
@@ -117,7 +114,7 @@ export interface PluginContextV1AlphaCapabilitiesSettings {
    * Return the setting if present, undefined if it doesnt exist.
    * Throws an error if you are not allowed to access this setting
    */
-  getSetting(key: string): Promise<unknown | undefined>;
+  getSetting<T>(key: string): Promise<T | undefined>;
 
   /**
  * ## Used to listen for Settings
@@ -126,10 +123,10 @@ export interface PluginContextV1AlphaCapabilitiesSettings {
  *
  * Do note that only keys where the last segment starts with an **Uppercase** char will be propagated here, except if the setting key is from your own plugin. This only gives you the key. If you wish the get the value, you should invoke {@link getSetting}
  *
- * Note this can only **be called once**.
+ * This function can be called multiple times. **Each call gives you back an unlistener. Invoke it for clean up**. Callbacks are cleaned up automatically on Plugin shutdown.
  *
  */
   registerSettingsChangedListener(
-    callback: (key: string) => void
-  ): void;
+    callback: (key: string, value: unknown) => void
+  ): Destructor;
 }
