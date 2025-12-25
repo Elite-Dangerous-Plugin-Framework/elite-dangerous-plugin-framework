@@ -5,6 +5,7 @@ import $RefParser from "@apidevtools/json-schema-ref-parser";
 import { glob } from "glob";
 import { mkdir, rm, writeFile } from "node:fs/promises";
 import { basename, join } from "node:path";
+import { $ } from "bun";
 
 function injectBigint(schema: any): void {
   if (!schema || typeof schema !== "object") return;
@@ -84,7 +85,7 @@ for (const schemaPath of journalEntryPoints) {
   // We define the event field to be a literal, so one can just e.g.
   // obj.event === "Loadout" and TS knows we have a Loadout event using the Loadout structure
   const name = basename(schemaPath, ".json");
-  const allOfIds = (schema.allOf ?? []).findIndex((e) => e.title === "Event");
+  const allOfIds = (schema.allOf ?? []).findIndex((e) => (e as any).title === "Event");
   if (allOfIds >= 0) {
     (schema as any).allOf[allOfIds].properties.event.const = name;
     delete (schema as any).allOf[allOfIds].properties.event.examples;
@@ -121,3 +122,13 @@ barrelFileContents.push(
 );
 
 await writeFile(join(generatedRoot, "index.ts"), barrelFileContents.join("\n"));
+
+await Bun.build({
+  outdir: "dist",
+  format: "esm",
+  entrypoints: ["./src/index.ts"],
+  target: "browser",
+  sourcemap: "external"
+})
+
+await $`tsc --emitDeclarationOnly --outDir dist`

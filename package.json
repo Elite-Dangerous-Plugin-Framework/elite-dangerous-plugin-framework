@@ -8,8 +8,7 @@
     "build": "tsc && vite build",
     "build:plugins": "bun run scripts/build-bundled-plugins.ts",
     "preview": "vite preview",
-    "tauri": "tauri",
-    "postinstall": "bun run build:plugins"
+    "tauri": "tauri"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",

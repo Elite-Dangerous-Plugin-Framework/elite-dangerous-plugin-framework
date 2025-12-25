@@ -10,11 +10,8 @@
     "README.md"
   ],
   "scripts": {
-    "build": "npm run clean && npm run build:js && npm run build:types",
-    "build:js": "esbuild src/index.ts --bundle --minify --sourcemap --platform=node --target=node18 --format=esm --outfile=dist/index.js",
-    "build:types": "tsc --emitDeclarationOnly --outDir dist",
-    "publish": "bun publish --access public",
-    "clean": "rm -rf dist"
+    "build": "bun run generate.ts",
+    "publish": "bun publish --access public"
   },
   "devDependencies": {
     "@types/node": "^24.4.0",
