@@ -1,9 +1,8 @@
 //! This module contains utils to encrypt and decrypt Payloads to be sent via Commands
 
-use aes_gcm::{
-    aead::{Aead, Payload},
-    Aes128Gcm, KeyInit, Nonce,
-};
+use std::fmt::Display;
+
+use aes_gcm::{aead::Aead, Aes128Gcm, KeyInit, Nonce};
 use base64::prelude::*;
 use rand::RngCore;
 use serde::{de::DeserializeOwned, Serialize};
@@ -16,14 +15,17 @@ pub(crate) enum DearmorError {
     InternalAesError,
 }
 
-impl ToString for DearmorError {
-    fn to_string(&self) -> String {
-        (match self {
-            DearmorError::IncorrectAesKey => "INCORRECT_AES_KEY",
-            DearmorError::FailedParsePayloadStructure => "FAILED_PARSE_PAYLOAD_STRUCTURE",
-            DearmorError::InternalAesError => "INTERNAL_AES_ERROR",
-        })
-        .into()
+impl Display for DearmorError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "{}",
+            (match self {
+                DearmorError::IncorrectAesKey => "INCORRECT_AES_KEY",
+                DearmorError::FailedParsePayloadStructure => "FAILED_PARSE_PAYLOAD_STRUCTURE",
+                DearmorError::InternalAesError => "INTERNAL_AES_ERROR",
+            })
+        )
     }
 }
 

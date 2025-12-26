@@ -1,4 +1,3 @@
-use axum::extract::Path;
 use chrono::{DateTime, TimeDelta, Utc};
 use ed_journals::logs::LogEventContent;
 use serde::{Deserialize, Serialize};
