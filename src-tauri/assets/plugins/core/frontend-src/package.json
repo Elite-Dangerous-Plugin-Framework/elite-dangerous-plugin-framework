@@ -8,7 +8,7 @@
     "tailwindcss": "^4.1.18"
   },
   "scripts": {
-    "build": "bun build --outfile=\"../frontend/index.js\" index.tsx && bunx @tailwindcss/cli -i style.css -o ../frontend/style.css"
+    "build": "bun build --outfile=\"../frontend/index.js\" index.tsx && bunx @tailwindcss/cli --input style.css --output ../frontend/style.css"
   },
   "peerDependencies": {
     "typescript": "^5"
