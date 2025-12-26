@@ -3,8 +3,10 @@
 
 
 import { $ } from "bun"
+import { join } from "node:path"
 
-await $`rm -rf ../frontend`
+const outputDir = join(import.meta.dir, "..", "frontend")
+await $`rm -rf ${outputDir}`
 
 await Bun.build({
   outdir: "../frontend",
@@ -14,5 +16,5 @@ await Bun.build({
   sourcemap: "external"
 })
 
-await $`tailwindcss --input style.css --output ../frontend/style.css`
+await $`tailwindcss --input style.css --output ${join(outputDir, "style.css")}`
 
