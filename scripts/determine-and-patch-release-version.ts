@@ -28,8 +28,10 @@ if (env["GITHUB_EVENT_NAME"] !== "push") {
 
 const tauriConfFilePath = join(import.meta.dir, "..", "src-tauri", "tauri.conf.json")
 
+const builtAt = new Date().toISOString()
 let channel: "dev" | "beta" | "stable"
-let newVersion = ""
+let newVersion: string
+let safeVersion: string
 const ref = env["GITHUB_REF"]
 if (!ref) {
   throw new Error("$GITHUB_REF missing. Is this run outside a Github CI Step?")
@@ -37,24 +39,32 @@ if (!ref) {
 if (ref.startsWith("refs/tags/v")) {
   newVersion = ref.replace("refs/tags/v", "").replaceAll("\n", "").trim()
   const isPrerelease = newVersion.includes("-pre")
+  safeVersion = coerce(newVersion, { includePrerelease: false }) + ""
   channel = isPrerelease ? "beta" : "stable"
 } else if (ref.startsWith("refs/heads/")) {
   // We are building a dev build
   const hash = (await $`git rev-parse --short HEAD`.text()).replaceAll("\n", "").trim()
   channel = "dev"
   const { version } = JSON.parse(await readFile(tauriConfFilePath, "utf-8"))
-  const strippedVersion = coerce(version, { includePrerelease: false })
-  const datesegment = new Date().toISOString()
+  safeVersion = coerce(version, { includePrerelease: false }) + ""
+  const datesegment = builtAt
     .slice(2, 19)
     .replace(/:/g, '-');
-  newVersion = `${strippedVersion}-dev-${datesegment}+${hash}`
+  newVersion = `${safeVersion}-dev-${datesegment}+${hash}`
 } else {
   throw new Error("invalid state. GITHUB_REF is not missing, but neither a refs/heads/, nor a refs/tags/v")
 }
 
-await writeFile(tauriConfFilePath, patchVersion(await readFile(tauriConfFilePath, "utf-8"), newVersion))
+await writeFile(tauriConfFilePath, patchVersion(await readFile(tauriConfFilePath, "utf-8"), safeVersion))
 // we write a file containing the relevant release channel for the next step
 await writeFile(join(import.meta.dir, "..", ".GITHUB_RELEASE_CHANNEL"), channel, "utf-8")
+await writeFile(join(tauriConfFilePath, "..", "assets", "versionInfo.json"), JSON.stringify({
+  channel,
+  version: newVersion,
+  builtAt,
+  safeVersion
+}), "utf-8")
+
 
 
 

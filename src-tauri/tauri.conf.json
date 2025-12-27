@@ -36,7 +36,8 @@
     ],
     "resources": [
       "./assets/plugins/*/frontend/*",
-      "./assets/plugins/*/manifest.json"
+      "./assets/plugins/*/manifest.json",
+      "./assets/versionInfo.json"
     ]
   }
 }
