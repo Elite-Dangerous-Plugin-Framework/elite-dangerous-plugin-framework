@@ -61,6 +61,20 @@ jobs:
 
       - name: Patch EDPF Build Version
         run: bun run ./scripts/determine-and-patch-release-version.ts
+      - name: Read GitHub release metadata
+        id: release_meta
+        shell: bash
+        run: |
+          TAG_NAME="$(cat .GITHUB_TAG_NAME 2>/dev/null || true)"
+          PRERELEASE="$(cat .GITHUB_TAG_PRERELEASE 2>/dev/null || true)"
+
+          if [[ -z "$TAG_NAME" ]]; then
+            echo "tag_name=false" >> "$GITHUB_OUTPUT"
+            echo "prerelease=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "tag_name=$TAG_NAME" >> "$GITHUB_OUTPUT"
+            echo "prerelease=${PRERELEASE:-false}" >> "$GITHUB_OUTPUT"
+          fi
       - name: Build EDPF
         uses: tauri-apps/tauri-action@v0
         env:
@@ -68,9 +82,9 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
         with:
           args: ${{ matrix.args }}
-      - name: Upload Tauri bundles
-        uses: actions/upload-artifact@v4
-        with:
-          name: edpf-build-${{ matrix.buildSuffix }}
-          path: |
-            src-tauri/target/release/bundle/
+          includeUpdaterJson: true
+          releaseBody: "See the assets to download this version and install"
+          releaseDraft: true
+          tagName: ${{ steps.release_meta.outputs.tag_name }}
+          releaseName: ${{ steps.release_meta.outputs.tag_name }}
+          prerelease: ${{ steps.release_meta.outputs.prerelease }}

@@ -58,6 +58,9 @@ if (ref.startsWith("refs/tags/v")) {
 await writeFile(tauriConfFilePath, patchVersion(await readFile(tauriConfFilePath, "utf-8"), safeVersion))
 // we write a file containing the relevant release channel for the next step
 await writeFile(join(import.meta.dir, "..", ".GITHUB_RELEASE_CHANNEL"), channel, "utf-8")
+await writeFile(join(import.meta.dir, "..", ".GITHUB_TAG_NAME"), channel === "dev" ? "" : "v" + newVersion, "utf-8")
+await writeFile(join(import.meta.dir, "..", ".GITHUB_TAG_PRERELEASE"), "" + (channel === "beta"), "utf-8")
+
 await writeFile(join(tauriConfFilePath, "..", "assets", "versionInfo.json"), JSON.stringify({
   channel,
   version: newVersion,
