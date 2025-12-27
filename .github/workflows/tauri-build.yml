@@ -74,7 +74,3 @@ jobs:
           name: edpf-build-${{ matrix.buildSuffix }}
           path: |
             src-tauri/target/release/bundle/
-      - name: Generate provenance attestation
-        uses: actions/attest-build-provenance@v1
-        with:
-          subject-path: src-tauri/target/release/bundle/**
