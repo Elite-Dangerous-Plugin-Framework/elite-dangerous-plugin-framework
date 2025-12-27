@@ -1,11 +1,19 @@
 # This pipeline definition is stolen from https://github.com/tauri-apps/tauri-action/blob/dev/examples/publish-to-auto-release.yml and adjusted to our needs.
-name: "publish"
+#
+
+name: "Build and release EDPF"
 
 on:
   push:
     branches:
-      - 9-infra-set-up-build-and-release-pipelines
+      - 9-infra-set-up-build-and-release-pipelines # temporary during testing
       - main
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+  id-token: write # required for attestations
 
 jobs:
   publish-tauri:
@@ -50,13 +58,21 @@ jobs:
       - name: build frontend dependencies (libs and plugins)
         run: bun run build:plugins # change this to npm, pnpm or bun depending on which one you use.
 
+      - name: Patch EDPF Build Version
+        run: bun run ./scripts/determine-and-patch-release-version.ts
       - uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
         with:
-          #tagName: app-v__VERSION__ # the action automatically replaces \_\_VERSION\_\_ with the app version.
-          #releaseName: "App v__VERSION__"
-          releaseBody: "See the assets to download this version and install."
-          releaseDraft: true
-          prerelease: true
           args: ${{ matrix.args }}
+      - name: Upload Tauri bundles
+        uses: actions/upload-artifact@v4
+        with:
+          name: tauri-build
+          path: |
+            src-tauri/target/release/bundle/
+      - name: Generate provenance attestation
+        uses: actions/attest-build-provenance@v1
+        with:
+          subject-path: src-tauri/target/release/bundle/**
