@@ -11,14 +11,13 @@ on:
     tags:
       - "v*"
 
-permissions:
-  contents: write
-  id-token: write # required for attestations
-
 jobs:
-  publish-tauri:
+  build-edpf:
+    name: Build EDPF for ${{ matrix.buildSuffix }}
     permissions:
       contents: write
+      id-token: write # required for attestations
+      attestations: write # required for attestations
     strategy:
       fail-fast: false
       matrix:
@@ -72,7 +71,7 @@ jobs:
       - name: Upload Tauri bundles
         uses: actions/upload-artifact@v4
         with:
-          name: edpf-build-${{ matrix.platform }}
+          name: edpf-build-${{ matrix.buildSuffix }}
           path: |
             src-tauri/target/release/bundle/
       - name: Generate provenance attestation
