@@ -24,8 +24,15 @@
       "csp": null
     }
   },
+  "plugins": {
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEFFQUQ2RjQ3NTk0NkU4QTcKUldTbjZFWlpSMit0cm5CYkFTTjRvU0lrc3lsY3MxWU00L2c0MnRYelBlNzdWdldkem1yQzNqcGEK",
+      "endpoints": []
+    }
+  },
   "bundle": {
     "active": true,
+    "createUpdaterArtifacts": true,
     "targets": "all",
     "icon": [
       "icons/32x32.png",

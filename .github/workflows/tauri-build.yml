@@ -25,8 +25,10 @@ jobs:
         include:
           - platform: "ubuntu-22.04"
             args: ""
+            buildSuffix: "linux"
           - platform: "windows-latest"
             args: ""
+            buildSuffix: "windows"
 
     runs-on: ${{ matrix.platform }}
     steps:
@@ -60,7 +62,8 @@ jobs:
 
       - name: Patch EDPF Build Version
         run: bun run ./scripts/determine-and-patch-release-version.ts
-      - uses: tauri-apps/tauri-action@v0
+      - name: Build EDPF
+        uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
@@ -69,7 +72,7 @@ jobs:
       - name: Upload Tauri bundles
         uses: actions/upload-artifact@v4
         with:
-          name: tauri-build
+          name: edpf-build-${{ matrix.platform }}
           path: |
             src-tauri/target/release/bundle/
       - name: Generate provenance attestation
