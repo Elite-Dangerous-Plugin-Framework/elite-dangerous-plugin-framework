@@ -75,8 +75,9 @@ jobs:
             echo "tag_name=$TAG_NAME" >> "$GITHUB_OUTPUT"
             echo "prerelease=${PRERELEASE:-false}" >> "$GITHUB_OUTPUT"
           fi
-      - name: Build EDPF
+      - name: Build and release EDPF
         uses: tauri-apps/tauri-action@v0
+        if: ${{ steps.release_meta.outputs.tag_name != 'false' }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
@@ -88,3 +89,14 @@ jobs:
           tagName: ${{ steps.release_meta.outputs.tag_name }}
           releaseName: ${{ steps.release_meta.outputs.tag_name }}
           prerelease: ${{ steps.release_meta.outputs.prerelease }}
+      - name: Build EDPF (no release)
+        uses: tauri-apps/tauri-action@v0
+        if: ${{ steps.release_meta.outputs.tag_name == 'false' }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+        with:
+          args: ${{ matrix.args }}
+          includeUpdaterJson: true
+          releaseBody: "See the assets to download this version and install"
+          releaseDraft: false
