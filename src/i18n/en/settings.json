@@ -1,0 +1,28 @@
+{
+    "yourPlugins": "Your Plugins",
+    "openPluginFolder": "Open Plugin Folder",
+    "noPluginsLoaded": "No plugins loaded",
+    "selectPluginLeft": "Select a Plugin on the Left to configure it",
+    "pluginVariant": {
+        "embedded": "Embedded",
+        "userprovided": "User-provided"
+    },
+    "pluginByIdNotFoundBug": "The plugin you're trying to access couldn't be found by ID. This is probably a bug.",
+    "pluginVersionMissing": "Version missing",
+    "pluginStates": {
+        "Starting": "Starting",
+        "Disabled": "Disabled",
+        "FailedToStart": "Failed to Start",
+        "Disabling": "Disabling",
+        "Running": "Running"
+    },
+    "settingsNoCorrectImport": "The plugin does not correctly define the settings. Please contact the plugin developer and ask for a fix.",
+    "pluginNoDescription": "no description provided",
+    "pluginSettingsNotCorrectlyDefined": "The plugin does not correctly define the settings. Please contact the plugin developer.",
+    "settingsLoadState": {
+        "Loading": "Loading",
+        "FailedAwaitImport": "Failed to import plugin. This is likely a bug with the plugin and should be reported to the developer.",
+        "NoSettingsExported": "This plugin does not provide any settings.",
+        "PluginNotFound": "The plugin could not be found internally. This is a bug and should be reported."
+    }
+}

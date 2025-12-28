@@ -12,6 +12,7 @@ import {
   startAndLoadSettings,
 } from "./startAndLoadSettings";
 import { SettingsCell } from "./SettingsCell";
+import { useTranslation } from "react-i18next";
 
 export interface SettingsPluginPaneProps {
   plugin: PluginState;
@@ -45,6 +46,7 @@ export function SettingsPluginPane({
   const description = getDescription(plugin);
   const [settingsLoadState, setSettingsLoadState] =
     useState<SettingsComponentLoadState>({ type: "Loading" });
+  const { t } = useTranslation("settings")
 
   useEffect(() => {
     // We (try to) register the ES-Module for this Plugin and try to find a Settings Component. If found, we register the Web Component. You cannot un-register web components. This is also why the hash is in here.
@@ -61,9 +63,9 @@ export function SettingsPluginPane({
         <div className="flex flex-col">
           <span className="inline-flex gap-1 items-center">
             <PluginTypeIcon type={plugin.source} />{" "}
-            <span className=" text-xs text-gray-500">{plugin.source} · </span>
+            <span className=" text-xs text-gray-500">{t(plugin.source === "Embedded" ? "pluginVariant.embedded" : "pluginVariant.userprovided")} · </span>
             <span className="text-xs text-gray-500">
-              {pluginVersion ?? "version info missing"}
+              {pluginVersion ?? t("pluginVersionMissing")}
             </span>
           </span>
           <h2 className=" inline-flex gap-2 items-baseline">
@@ -93,12 +95,11 @@ export function SettingsPluginPane({
               currentStateType === "Starting" ||
               currentStateType === "Disabling"
             }
-            className={`rounded-lg p-2 bg-white/10 hover:bg-white/20 ${
-              currentStateType === "Starting" ||
+            className={`rounded-lg p-2 bg-white/10 hover:bg-white/20 ${currentStateType === "Starting" ||
               currentStateType === "Disabling"
-                ? "cursor-progress animate-pulse"
-                : "cursor-pointer"
-            } `}
+              ? "cursor-progress animate-pulse"
+              : "cursor-pointer"
+              } `}
           >
             <PluginStartStopButton
               className={`h-6 w-6 `}
@@ -150,24 +151,20 @@ export function SettingsPluginPane({
         </div>
       )}
       <section className="" id="plugin_settings">
-        {settingsLoadState.type === "Loading" && <p>Loading…</p>}
+        {settingsLoadState.type === "Loading" && <p>{t("settingsLoadState.Loading")}</p>}
         {settingsLoadState.type === "FailedAwaitImport" && (
-          <p>Failed to import plugin. This is a bug and should be reported.</p>
+          <p>{t("settingsLoadState.FailedAwaitImport")}</p>
         )}
         {settingsLoadState.type === "NoSettingsExported" && (
-          <p>This plugin does not provide any settings.</p>
+          <p>{t("settingsLoadState.NoSettingsExported")}</p>
         )}
         {settingsLoadState.type === "PluginNotFound" && (
-          <p>
-            The plugin could not be found internally. This is a bug and should
-            be reported.
-          </p>
+          <p>{t("settingsLoadState.PluginNotFound")}</p>
         )}
         {settingsLoadState.type === "SettingsExportNotHTMLElement" ||
           (settingsLoadState.type === "InitializationFailed" && (
-            <p>
-              The plugin does not correctly define the settings. Please contact
-              the plugin developer.
+            <p> {t("pluginSettingsNotCorrectlyDefined")}
+
               {settingsLoadState.reason && (
                 <span className="block text-red-300">
                   {settingsLoadState.reason}

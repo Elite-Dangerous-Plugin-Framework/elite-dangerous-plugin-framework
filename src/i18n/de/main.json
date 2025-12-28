@@ -1,0 +1,21 @@
+{
+    "editModeActive": "Bearbeitungsmodus aktiv",
+    "layoutEmpty": "Layout leer",
+    "layoutEmptyDetail": "Aktuell gibt es keine Plugins in diesem Layout. Klicke auf den Parkplatzknopf unten links und ziehe Plugins in das Layout.",
+    "parkingLot": {
+        "name": "Parkplatz",
+        "moveTo": "Auf den Parkplatz ablegen",
+        "executionHint": "Geparkte Plugins werden weiterhin ausgeführt",
+        "moveToParkingLotHint": "Alle Plugins sind auf dem Hauptlayout. Zu wenig Platz? Ziehe Plugins zurück hierher auf den Parkplatz.",
+        "empty": "Leer!"
+    },
+    "pluginDragReleaseToPress": "Hier Plugin ablegen",
+    "header": {
+        "openSettings": "Einstellungen Öffnen",
+        "openEditMode": "Pluginanreihung ändern",
+        "editModeHelpPage": "Hilfsseite öffnen",
+        "minimize": "Minimieren",
+        "maximize": "Maximieren"
+    },
+    "loading": "Am Laden…"
+}

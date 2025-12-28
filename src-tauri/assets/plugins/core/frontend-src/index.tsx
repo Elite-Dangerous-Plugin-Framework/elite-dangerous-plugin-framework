@@ -415,7 +415,6 @@ function PluginRoot({ ctx }: { ctx: PluginContextV1Alpha }) {
           <div>Awaiting game launch or journal update</div>
         )}
       </div>
-      {}
     </>
   );
 }
