@@ -1,0 +1,21 @@
+{
+    "editModeActive": "Edit Mode Active",
+    "layoutEmpty": "Layout empty",
+    "layoutEmptyDetail": "Currently there are no plugins in this layout. Click the Parking Lot Button in the Bottom Left corner and drag some plugins into this layout.",
+    "parkingLot": {
+        "name": "Parking Lot",
+        "moveTo": "Move to parking lot",
+        "executionHint": "Parked plugins are still executed",
+        "moveToParkingLotHint": "All your active plugins are on the main layout. Feeling crammed? Drag your plugins into here to move them into the parking lot",
+        "empty": "Empty!"
+    },
+    "pluginDragReleaseToPress": "Release here to place plugin",
+    "header": {
+        "openSettings": "Open Settings",
+        "openEditMode": "Change plugin arrangement",
+        "editModeHelpPage": "Open Help page",
+        "minimize": "Minimize",
+        "maximize": "Maximize"
+    },
+    "loading": "Loading…"
+}

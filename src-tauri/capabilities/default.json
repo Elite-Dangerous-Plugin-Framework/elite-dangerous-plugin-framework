@@ -13,10 +13,13 @@
     "core:window:default",
     "core:window:allow-start-dragging",
     "core:window:allow-maximize",
+    "core:window:allow-unmaximize",
     "core:window:allow-close",
     "core:window:allow-is-maximized",
     "core:window:allow-minimize",
     "core:event:allow-listen",
+    "window-state:allow-save-window-state",
+    "window-state:allow-restore-state",
     "core:event:allow-unlisten",
     "opener:allow-default-urls",
     {

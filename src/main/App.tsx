@@ -1,5 +1,4 @@
 import { useEffect, useRef, useState } from "react";
-import { getCurrentWindow, Window } from "@tauri-apps/api/window";
 import z from "zod";
 import { Header } from "./Header";
 import PluginsManager, {
@@ -18,10 +17,12 @@ import {
   traverseNode,
 } from "./helpers";
 import { CommandWrapper } from "../commands/commandWrapper";
+import { listen, UnlistenFn } from "@tauri-apps/api/event";
+import { useTranslation } from "react-i18next";
 
 export default function App() {
-  const [appWin, setAppWin] = useState<Window>();
-  const [isMaximized, setIsMaximized] = useState(false);
+  const { i18n } = useTranslation("settings")
+
   const [isEditMode, setIsEditMode] = useState(false);
   const [isParkingLotExpanded, setIsParkingLotExpanded] = useState(false);
   const pluginManagerRef = useRef<PluginsManager>();
@@ -37,7 +38,10 @@ export default function App() {
     pluginState ?? {},
     layout
   );
+
   useEffect(() => {
+    const updateUnlistens: Promise<UnlistenFn>[] = []
+
     let manager: PluginsManager | undefined;
     if (!pluginManagerRef.current || pluginManagerRef.current.destroyed) {
       getRootToken().then((rootToken) => {
@@ -57,10 +61,36 @@ export default function App() {
           setLayout(e.data);
         });
 
+        command.readSetting("core", "core.Locale").then(e => {
+          if (!e.success) {
+            return
+          }
+          const locale = e.data.value ?? "en"
+          i18n.changeLanguage(locale)
+        })
+
+        updateUnlistens.push(listen("settings_update", async ({ payload }) => {
+          if (!command) return
+          const decrypted = await command.decryptSettingsPayload(payload)
+          if (!decrypted || !decrypted.success) {
+            console.error("failed to RX settings update", { reason: decrypted.reason })
+            return
+          }
+          // For now, we just care about the locale. This might change in the future (e.g. theming)
+          if (decrypted.data.key === "core.Locale") {
+            const locale = decrypted.data.value ?? "en"
+            i18n.changeLanguage(locale)
+          }
+        }))
+
         const reconciler = new PluginReconcilerImpl(command);
         manager = new PluginsManager(command, reconciler);
         manager.init(setPluginState);
         pluginManagerRef.current = manager;
+
+        return () => {
+          Promise.all(updateUnlistens).then(e => e.forEach(e => e()))
+        }
       });
     } else {
       console.info("plugin manager ref already exists — not recreating");
@@ -74,21 +104,18 @@ export default function App() {
       }
     };
   }, []);
-  useEffect(() => {
-    const win = getCurrentWindow();
-    setAppWin(win);
-    win.isMaximized().then((e) => setIsMaximized(e));
-  }, []);
 
   return (
     <main
       id="main-window"
       className="bg-slate-950 min-h-[100vh] text-white flex flex-col group"
     >
+      {/* 
+        isMaximized is hard-coded due to an issue trying to commit the Maximized State.
+        See https://github.com/tauri-apps/plugins-workspace/issues/2088
+      */}
       <Header
-        appWin={appWin}
-        isMaximized={isMaximized}
-        setIsMaximized={setIsMaximized}
+        isMaximized={false}
         isEditMode={isEditMode}
         toggleEditMode={() => setIsEditMode(!isEditMode)}
         handleOpenSettingsClick={() =>

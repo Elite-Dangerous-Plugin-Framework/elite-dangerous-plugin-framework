@@ -1,0 +1,28 @@
+{
+    "yourPlugins": "Deine Plugins",
+    "openPluginFolder": "Pluginordner öffnen",
+    "noPluginsLoaded": "Keine Plugins geladen",
+    "selectPluginLeft": "Wähle ein Plugin auf der linken Seite aus um es zu Konfigurieren",
+    "pluginVariant": {
+        "embedded": "Eingebettet",
+        "userprovided": "Vom Nutzer eingebunden"
+    },
+    "pluginByIdNotFoundBug": "Dieses Plugin konnte nicht über die ID aufgefunden werden. Hierbei handelt es sich sehr wahrscheinlich um einen Fehler.",
+    "pluginVersionMissing": "Version nicht angegeben",
+    "pluginStates": {
+        "Starting": "Am Starten",
+        "Disabled": "Deaktiviert",
+        "FailedToStart": "Fehler beim Start",
+        "Disabling": "Am Deaktivieren",
+        "Running": "Aktiv"
+    },
+    "settingsNoCorrectImport": "The plugin does not correctly define the settings. Please contact the plugin developer and ask for a fix.",
+    "pluginNoDescription": "Keine Beschreibung bereitgestellt",
+    "pluginSettingsNotCorrectlyDefined": "Das Plugin hat einen Fehler bei der Deklaration der Einstellungen gemacht. Bitte Kontaktiere den Pluginentwickler.",
+    "settingsLoadState": {
+        "Loading": "Am laden",
+        "FailedAwaitImport": "Pluginimport fehlgeschlagen. Dies ist sehr wahrscheinlich ein Fehler und sollte dem Pluginentwickler mitgeteilt werden",
+        "NoSettingsExported": "Dieses Plugin ist nicht konfigurierbar.",
+        "PluginNotFound": "Das Plugin konnte intern nicht gefunden werden. Hierbei handelt es sich um einen internen Fehler."
+    }
+}

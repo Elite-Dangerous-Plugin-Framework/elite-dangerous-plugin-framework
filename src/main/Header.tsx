@@ -1,3 +1,4 @@
+import { getCurrentWindow } from "@tauri-apps/api/window";
 import {
   CloseIcon,
   EditPlugins,
@@ -5,34 +6,32 @@ import {
   MinimizeIcon,
   SettingsIcon,
 } from "../icons/navbar";
-import { Window } from "@tauri-apps/api/window";
 import { openUrl } from "@tauri-apps/plugin-opener";
+import { useTranslation } from "react-i18next";
 
 interface HeaderProps {
-  appWin: Window | undefined;
   isMaximized: boolean;
-  setIsMaximized: (m: boolean) => void;
   isEditMode: boolean;
   toggleEditMode: () => void;
   handleOpenSettingsClick: () => void;
 }
 export function Header({
-  appWin,
   isMaximized,
-  setIsMaximized,
   isEditMode,
   handleOpenSettingsClick,
   toggleEditMode,
 }: HeaderProps) {
+
+  const { t } = useTranslation("main")
+
   return (
     <header
       data-tauri-drag-region
-      className={`flex justify-end gap-1 items-stretch ${
-        isEditMode ? "bg-green-900" : "group-hover:visible invisible"
-      } cursor-move`}
+      className={`flex justify-end gap-1 items-stretch ${isEditMode ? "bg-green-900" : "group-hover:visible invisible"
+        } cursor-move`}
     >
       <button
-        title="Open Settings"
+        title={t("header.openSettings")}
         onClick={() => {
           console.info("e");
           handleOpenSettingsClick();
@@ -43,10 +42,8 @@ export function Header({
       </button>
       <button
         onClick={() => toggleEditMode()}
-        title="Change Plugin Arrangement"
-        className={`px-2 cursor-pointer  ${
-          isEditMode ? "bg-green-600 hover:bg-green-500" : "hover:bg-white/10"
-        }`}
+        title={t("header.openEditMode")}
+        className={`px-2 cursor-pointer  ${isEditMode ? "bg-green-600 hover:bg-green-500" : "hover:bg-white/10"}`}
       >
         <EditPlugins className="w-6 h-6" editing={isEditMode} />
       </button>
@@ -54,14 +51,14 @@ export function Header({
       <div className="flex-1 flex  flex-row items-stretch pointer-events-none">
         {isEditMode && (
           <div className="pointer-events-none text-sm inline-flex flex-row ">
-            <i className=" self-center">Edit Mode Active</i>
+            <i className=" self-center">{t("editModeActive")}</i>
             <a
               onClick={() =>
                 openUrl(
-                  "https://cmdr-wdx.github.io/elite-dangerous-plugin-framework/guide/todo.html"
+                  "https://elite-dangerous-plugin-framework.github.io/users/editMode"
                 )
               }
-              title="Open Help Page"
+              title={t("header.editModeHelpPage")}
               className="px-2 cursor-pointer pointer-events-auto hover:bg-green-500 flex"
             >
               <span className=" self-center">?</span>
@@ -70,42 +67,33 @@ export function Header({
         )}
       </div>
       <button
-        title="Minimize"
+        title={t("header.minimize")}
         className="px-2 cursor-pointer hover:bg-blue-900"
       >
         <MinimizeIcon
           className="w-6 h-6"
           onClick={() => {
-            if (!appWin) {
-              return;
-            }
-            appWin.minimize();
+            getCurrentWindow().minimize()
           }}
         />
       </button>
       <button
-        title="Maximize"
+        title={t("header.maximize")}
         className="px-2 cursor-pointer hover:bg-blue-900"
       >
         <FullScreenIcon
           className="w-6 h-6"
           isMaximized={isMaximized}
-          onClick={() => {
-            if (!appWin) {
-              return;
-            }
-            appWin.maximize().then(async () => {
-              setIsMaximized(await appWin.isMaximized());
-            });
+          onClick={async () => {
+            const appWin = getCurrentWindow()
+            const maximized = await appWin.isMaximized()
+            maximized ? await appWin.unmaximize() : await appWin.maximize()
           }}
         />
       </button>
       <button
         onClick={() => {
-          if (!appWin) {
-            return;
-          }
-          appWin.close();
+          getCurrentWindow().close()
         }}
         className="px-2 cursor-pointer hover:bg-red-900"
       >

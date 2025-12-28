@@ -9,15 +9,20 @@ import { countPluginStates, PluginStateUIData } from "./utils";
 import { ZondiconsFolder } from "../icons/pluginType";
 import { CommandWrapper } from "../commands/commandWrapper";
 import { getRootToken } from "../commands/getRootToken";
+import { useTranslation } from "react-i18next";
 
 export default function Settings() {
   const [pluginStates, setPluginStates] =
     useState<(PluginState & { id: string })[]>();
+
   const [activeId, setActiveId] = useState<string>();
   const commandWrapperRef = useRef<CommandWrapper>();
 
+  const { t, i18n } = useTranslation("settings")
+
+
   useEffect(() => {
-    const updateUnlisten = listen("core/plugins/update", async () => {
+    const updateUnlistens = [listen("core/plugins/update", async () => {
       if (!commandWrapperRef.current) { return }
       const p = await commandWrapperRef.current?.fetchAllPlugins()
       if (!p.success) {
@@ -27,12 +32,31 @@ export default function Settings() {
         .map(([id, v]) => ({ ...v, id }))
         .sort((a, b) => a.id.localeCompare(b.id));
       setPluginStates(result);
-    });
+    })];
     (async () => {
       if (!commandWrapperRef.current) {
         commandWrapperRef.current = new CommandWrapper(await getRootToken());
       }
-
+      commandWrapperRef.current.readSetting("core", "core.Locale").then(e => {
+        if (!e.success) {
+          return
+        }
+        const locale = e.data.value ?? "en"
+        i18n.changeLanguage(locale)
+      })
+      updateUnlistens.push(listen("settings_update", async ({ payload }) => {
+        if (!commandWrapperRef.current) return
+        const decrypted = await commandWrapperRef.current!.decryptSettingsPayload(payload)
+        if (!decrypted || !decrypted.success) {
+          console.error("failed to RX settings update", { reason: decrypted.reason })
+          return
+        }
+        // For now, we just care about the locale. This might change in the future (e.g. theming)
+        if (decrypted.data.key === "core.Locale") {
+          const locale = decrypted.data.value ?? "en"
+          i18n.changeLanguage(locale)
+        }
+      }))
 
       const p = await commandWrapperRef.current?.fetchAllPlugins()
       if (!p.success) {
@@ -44,13 +68,14 @@ export default function Settings() {
       setPluginStates(result);
 
 
+
+
     })()
     return () => {
-      updateUnlisten.then((e) => e());
+      Promise.all(updateUnlistens).then((e) => e.forEach(e => e()));
     };
 
   }, [])
-
 
 
   useEffect(() => {
@@ -98,10 +123,10 @@ export default function Settings() {
             className="p-2 cursor-pointer hover:bg-white/10"
             onClick={() => setActiveId(undefined)}
           >
-            Your Plugins
+            {t("yourPlugins")}
           </h1>
           {(pluginStates ?? []).length === 0 ? (
-            <p>No plugins loaded</p>
+            <p>{t("noPluginsLoaded")}</p>
           ) : (
             pluginStates!.map((e) => (
               <SettingsSidebarPlugin
@@ -123,7 +148,7 @@ export default function Settings() {
             className="flex cursor-pointer flex-row justify-center items-center gap-2 py-2 hover:bg-white/10"
           >
             <ZondiconsFolder />
-            <span>Open Plugin Folder</span>
+            <span>{t("openPluginFolder")}</span>
           </button>
         </div>
       </section>
@@ -144,11 +169,12 @@ export default function Settings() {
 }
 
 function SettingsMain({ plugin, commands }: { plugin: PluginState | undefined, commands: CommandWrapper }) {
+  const { t } = useTranslation("settings")
+
   if (!plugin) {
     return (
       <div>
-        <span className=" text-lg">Whoops…</span> The plugin you're trying to
-        access couldn't be found by ID. This is probably a bug.
+        <span className=" text-lg">Whoops…</span> {t("pluginByIdNotFoundBug")}
       </div>
     );
   }
@@ -191,8 +217,10 @@ function SettingsSidebarPlugin({
 }
 
 export function StatusIndicator({ state }: { state: PluginCurrentStateKeys }) {
+  const { t } = useTranslation("settings")
+
   return (
-    <span title={state} className="relative flex size-3">
+    <span title={t("pluginStates." + state as any)} className="relative flex size-3">
       {PluginStateUIData[state].pulsating && (
         <span
           style={{ backgroundColor: PluginStateUIData[state].colour }}

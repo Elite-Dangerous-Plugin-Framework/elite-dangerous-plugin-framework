@@ -4,9 +4,9 @@
   "version": "0.0.1",
   "identifier": "elite-dangerous-plugin-framework.app",
   "build": {
-    "beforeDevCommand": "bun run build:plugins && bun run dev",
+    "beforeDevCommand": "bun run dev",
     "devUrl": "http://localhost:1420",
-    "beforeBuildCommand": "bun run build && bun run build:plugins",
+    "beforeBuildCommand": "bun run build:plugins && bun run build",
     "frontendDist": "../dist"
   },
   "app": {

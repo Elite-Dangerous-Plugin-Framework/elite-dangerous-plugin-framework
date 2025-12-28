@@ -113,6 +113,13 @@ pub fn run() {
                 _ => {}
             }
         })
+        .on_window_event(|w, event| {
+            if let tauri::WindowEvent::CloseRequested { .. } = event {
+                if w.label() == "main" {
+                    w.app_handle().exit(0);
+                }
+            }
+        })
         .invoke_handler(tauri::generate_handler![
             plugins::commands::fetch_all_plugins,
             plugins::commands::get_import_path_for_plugin,

@@ -1,3 +1,4 @@
+import { useTranslation } from "react-i18next";
 import { PluginCurrentStateKeys } from "../types/PluginCurrentState";
 import { PluginStateUIData } from "./utils";
 
@@ -6,9 +7,12 @@ export function SettingsMainNoneSelected({
 }: {
   pluginStateCount: Record<PluginCurrentStateKeys, number>;
 }) {
+
+  const { t } = useTranslation("settings")
+
   return (
     <div className="p-2 overflow-y-scroll">
-      <p>Select a plugin on the left to configure it.</p>
+      <p>{t("selectPluginLeft")}</p>
       <SettingsStateVisualizer pluginStateCount={pluginStateCount} />
       <h2 className="my-2 text-lg">Core Settings</h2>
       <p className="text-sm text-gray-400">
@@ -23,6 +27,9 @@ function SettingsStateVisualizer({
 }: {
   pluginStateCount: Record<PluginCurrentStateKeys, number>;
 }) {
+
+  const { t } = useTranslation("settings")
+
   return (
     <div className="flex flex-row mt-2 gap-1">
       {(
@@ -45,7 +52,7 @@ function SettingsStateVisualizer({
               } `}
             key={e}
           >
-            <span>{e}:</span>
+            <span>{t(("pluginStates." + e) as any)}:</span>
             <span className="px-1">{pluginStateCount[e]}</span>
           </div>
         ))}
