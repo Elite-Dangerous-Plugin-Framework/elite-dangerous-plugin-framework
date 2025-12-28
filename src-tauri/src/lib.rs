@@ -17,6 +17,7 @@ pub fn run() {
     // This should be called as early in the execution of the app as possible
 
     tauri::Builder::default()
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_store::Builder::new().build())
         .plugin(tauri_plugin_single_instance::init(|app, _, _| {
             let _ = app

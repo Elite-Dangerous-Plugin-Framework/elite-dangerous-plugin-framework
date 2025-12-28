@@ -8,12 +8,12 @@ use std::{
 use super::{PluginState, PluginsState};
 use anyhow::anyhow;
 use axum::{
-    Json, Router,
     body::Body,
     extract::{Path, State},
     http::{Response, StatusCode},
     response::IntoResponse,
     routing::get,
+    Json, Router,
 };
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Manager, Wry};

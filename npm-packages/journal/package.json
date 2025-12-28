@@ -10,20 +10,16 @@
     "README.md"
   ],
   "scripts": {
-    "build": "bun run clean && bun run build:gen && bun run build:js && bun run build:types",
-    "build:gen": "bun run generate.ts",
-    "build:js": "esbuild src/index.ts --bundle --minify --sourcemap --platform=node --target=node18 --format=esm --outfile=dist/index.js",
-    "build:types": "tsc --emitDeclarationOnly --outDir dist",
+    "build": "bun run clean && bun run generate.ts",
     "publish": "bun publish --access public",
     "clean": "rm -rf dist"
   },
   "devDependencies": {
     "@apidevtools/json-schema-ref-parser": "^14.2.1",
     "@types/node": "^24.4.0",
-    "esbuild": "^0.24.0",
-    "typescript": "^5.5.0",
     "glob": "^11.0.3",
-    "json-schema-to-typescript": "^15.0.4"
+    "json-schema-to-typescript": "^15.0.4",
+    "typescript": "^5.5.0"
   },
   "dependencies": {}
 }

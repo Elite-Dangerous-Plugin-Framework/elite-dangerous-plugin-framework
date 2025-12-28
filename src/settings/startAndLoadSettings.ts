@@ -100,7 +100,11 @@ export async function startAndLoadSettings(
     }
   }
   const assetsBase = result.data.import.substring(0, result.data.import.lastIndexOf("/") + 1);
-  const settingsContext = new PluginSettingsContextV1AlphaImpl(pluginID, commands, assetsBase)
+  const manifest = await commands.getPlugin(pluginID)
+  if (!manifest.success) {
+    throw new Error("failed to get plugin: " + manifest.reason)
+  }
+  const settingsContext = new PluginSettingsContextV1AlphaImpl({ ...manifest.data.manifest, id: manifest.data.id }, commands, assetsBase)
   try {
     item.initSettings(settingsContext);
   } catch (e) {

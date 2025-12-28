@@ -1,0 +1,102 @@
+# This pipeline definition is stolen from https://github.com/tauri-apps/tauri-action/blob/dev/examples/publish-to-auto-release.yml and adjusted to our needs.
+#
+
+name: "Build and release EDPF"
+
+on:
+  push:
+    branches:
+      - 9-infra-set-up-build-and-release-pipelines # temporary during testing
+      - main
+    tags:
+      - "v*"
+
+jobs:
+  build-edpf:
+    name: Build EDPF for ${{ matrix.buildSuffix }}
+    permissions:
+      contents: write
+      id-token: write # required for attestations
+      attestations: write # required for attestations
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: "ubuntu-22.04"
+            args: ""
+            buildSuffix: "linux"
+          - platform: "windows-latest"
+            args: ""
+            buildSuffix: "windows"
+
+    runs-on: ${{ matrix.platform }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          submodules: "true"
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3.4
+      - name: install Rust stable
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          # Those targets are only used on macos runners so it's in an `if` to slightly speed up windows and linux builds.
+          targets: ${{ matrix.platform == 'macos-latest' && 'aarch64-apple-darwin,x86_64-apple-darwin' || '' }}
+
+      - name: Rust cache
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: "./src-tauri -> target"
+
+      - name: install dependencies (ubuntu only)
+        if: matrix.platform == 'ubuntu-22.04' # This must match the platform value defined above.
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
+
+      - name: install frontend dependencies
+        run: bun install # change this to npm, pnpm or bun depending on which one you use.
+      - name: build frontend dependencies (libs and plugins)
+        run: bun run build:plugins # change this to npm, pnpm or bun depending on which one you use.
+
+      - name: Patch EDPF Build Version
+        run: bun run ./scripts/determine-and-patch-release-version.ts
+      - name: Read GitHub release metadata
+        id: release_meta
+        shell: bash
+        run: |
+          TAG_NAME="$(cat .GITHUB_TAG_NAME 2>/dev/null || true)"
+          PRERELEASE="$(cat .GITHUB_TAG_PRERELEASE 2>/dev/null || true)"
+
+          if [[ -z "$TAG_NAME" ]]; then
+            echo "tag_name=false" >> "$GITHUB_OUTPUT"
+            echo "prerelease=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "tag_name=$TAG_NAME" >> "$GITHUB_OUTPUT"
+            echo "prerelease=${PRERELEASE:-false}" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Build and release EDPF
+        uses: tauri-apps/tauri-action@v0
+        if: ${{ steps.release_meta.outputs.tag_name != 'false' }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+        with:
+          args: ${{ matrix.args }}
+          includeUpdaterJson: true
+          releaseBody: "See the assets to download this version and install"
+          releaseDraft: true
+          tagName: ${{ steps.release_meta.outputs.tag_name }}
+          releaseName: ${{ steps.release_meta.outputs.tag_name }}
+          prerelease: ${{ steps.release_meta.outputs.prerelease }}
+      - name: Build EDPF (no release)
+        uses: tauri-apps/tauri-action@v0
+        if: ${{ steps.release_meta.outputs.tag_name == 'false' }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+        with:
+          args: ${{ matrix.args }}
+          includeUpdaterJson: true
+          releaseBody: "See the assets to download this version and install"
+          releaseDraft: false
