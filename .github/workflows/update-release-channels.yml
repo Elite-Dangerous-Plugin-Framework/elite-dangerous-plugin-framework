@@ -2,14 +2,6 @@ name: Update Release Channels
 
 on:
   release:
-    types:
-      - published
-      - unpublished
-      - created
-      - edited
-      - deleted
-      - prereleased
-      - released
   workflow_dispatch:
 permissions:
   contents: read

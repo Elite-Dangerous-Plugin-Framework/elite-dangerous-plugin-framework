@@ -6,7 +6,6 @@ name: "Build and release EDPF"
 on:
   push:
     branches:
-      - 9-infra-set-up-build-and-release-pipelines # temporary during testing
       - main
     tags:
       - "v*"
