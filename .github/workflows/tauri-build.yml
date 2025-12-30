@@ -79,7 +79,10 @@ jobs:
         uses: tauri-apps/tauri-action@v0
         if: ${{ steps.release_meta.outputs.tag_name != 'false' }}
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # This MUST be a PAT instead of the Job Token because GitHub will
+          # not allow events triggered by a Job Token to prevent recursion.
+          #
+          GITHUB_TOKEN: ${{ secrets.PAT_RELEASER_TOKEN }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
         with:
           args: ${{ matrix.args }}
@@ -93,7 +96,7 @@ jobs:
         uses: tauri-apps/tauri-action@v0
         if: ${{ steps.release_meta.outputs.tag_name == 'false' }}
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.PAT_RELEASER_TOKEN }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
         with:
           args: ${{ matrix.args }}
