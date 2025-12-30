@@ -47,17 +47,19 @@ const outDir = join(import.meta.dir, "generated_jsons_dist")
 await rm(outDir, { recursive: true, force: true })
 await mkdir(outDir, { recursive: true })
 
+const publicUrlBase = "https://elite-dangerous-plugin-framework.github.io/elite-dangerous-plugin-framework/"
+
 if (mostRecentStableRelease) {
-  listItems.push(`<li><a href="${mostRecentStableRelease.searchUrl}">stable release</a></li>`)
+  listItems.push(`<li><a href="${publicUrlBase}/stable.json">stable release</a></li>`)
   await writeFile(join(outDir, "stable.json"), JSON.stringify(mostRecentStableRelease.latest),)
 
 }
 if (mostRecentPrerelease) {
-  listItems.push(`<li><a href="${mostRecentPrerelease.searchUrl}">pre-release</a></li>`)
+  listItems.push(`<li><a href="${publicUrlBase}/prerelease.json">pre-release</a></li>`)
   await writeFile(join(outDir, "prerelease.json"), JSON.stringify(mostRecentPrerelease.latest),)
 }
 if (sharedMostRecent) {
-  listItems.push(`<li><a href="${sharedMostRecent.searchUrl}">merged</a> (stable or pre-release, whichever is newer)</li>`)
+  listItems.push(`<li><a href="${publicUrlBase}/merged.json">merged</a> (stable or pre-release, whichever is newer)</li>`)
   await writeFile(join(outDir, "merged.json"), JSON.stringify(sharedMostRecent.latest),)
 }
 

@@ -2,7 +2,15 @@ name: Update Release Channels
 
 on:
   release:
-
+    types:
+      - published
+      - unpublished
+      - created
+      - edited
+      - deleted
+      - prereleased
+      - released
+  workflow_dispatch:
 permissions:
   contents: read
   pages: write
@@ -20,10 +28,9 @@ jobs:
         with:
           ref: main
 
-      - name: Setup Bun
-        uses: oven-sh/bun-action@v2
+      - uses: oven-sh/setup-bun@v2
         with:
-          version: stable
+          bun-version: latest
 
       - name: Install dependencies
         run: bun install
