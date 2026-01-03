@@ -16,13 +16,16 @@ type UpdateState =
   | { type: "managedBySystem"; toolingName: string };
 
 function UpdateStateFragment({ updateState, startUpdate }: { updateState: UpdateState, startUpdate: () => void }) {
+
+  const { t } = useTranslation("settings")
+
   switch (updateState.type) {
     case "loading":
       return (
         <div className="p-2 w-full gap-2 items-center inline-flex flex-row animate-pulse">
           <IconDownload className=" w-12 h-12" />
           <div>
-            <p className="text-xl">Looking for Updates…</p>
+            <p className="text-xl">{t("update.loading.main")}</p>
           </div>
         </div>
       );
@@ -31,8 +34,8 @@ function UpdateStateFragment({ updateState, startUpdate }: { updateState: Update
         <div className="p-2 w-full gap-2 items-center inline-flex flex-row">
           <IconUpToDate className=" w-12 h-12" />
           <div>
-            <p className="text-xl">There are no updates</p>
-            <p className="text-sm">Your Version is up to date.</p>
+            <p className="text-xl">{t("update.noUpdates.main")}</p>
+            <p className="text-sm">{t("update.noUpdates.subtext")}</p>
           </div>
         </div>
       );
@@ -41,15 +44,15 @@ function UpdateStateFragment({ updateState, startUpdate }: { updateState: Update
         <div className="p-2 w-full gap-2 items-center inline-flex flex-row">
           <IconDownload className=" text-green-500 w-16 h-16" />
           <div>
-            <p className="">There is an update available!</p>
+            <p className="">{t("update.hasUpdate.main")}</p>
             <p className="text-sm text-gray-400">
-              <code>{updateState.currentVersion}</code> is updated to{" "}
+              <code>{updateState.currentVersion}</code> {t("update.hasUpdate.updatedTo")}{" "}
               <code className="text-green-400 animate-pulse">
                 {updateState.newVersion}
               </code>
             </p>
             <button onClick={() => startUpdate()} className=" cursor-pointer p-2 border-2 w-full border-green-600 text-green-600 rounded-sm hover:text-white hover:bg-green-700 hover:border-green-700">
-              Install and Update
+              {t("update.hasUpdate.btnInstall")}
             </button>
           </div>
         </div>
@@ -59,7 +62,7 @@ function UpdateStateFragment({ updateState, startUpdate }: { updateState: Update
         <div className="p-2 w-full gap-2 items-center inline-flex flex-row">
           <IconDownload className=" text-green-500 w-16 h-16" />
           <div className="w-full">
-            <p className="">Downloading Update… <span>[{Math.round(10 * updateState.bytes / 1024 / 1024) / 10}MiB / {Math.round(10 * updateState.total / 1024 / 1024) / 10}MiB]</span></p>
+            <p className="">{t("update.downloading.main")} <span>[{Math.round(10 * updateState.bytes / 1024 / 1024) / 10}MiB / {Math.round(10 * updateState.total / 1024 / 1024) / 10}MiB]</span></p>
             <div className="w-full h-6 border-2 border-slate-700 rounded-lg flex flex-row">
               <div
                 style={{
@@ -77,8 +80,7 @@ function UpdateStateFragment({ updateState, startUpdate }: { updateState: Update
           <IconCannotUpdate className=" w-12 h-12" />
           <div>
             <p className="text-sm text-gray-500">
-              This installation has autoupdates disabled because updates are
-              managed by your system's package manager:
+              {t("update.managedBySystem.main")}:
               <span className=" text-white not-italic">
                 {updateState.toolingName}
               </span>

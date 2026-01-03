@@ -142,7 +142,7 @@ export function SettingsPluginPane({
       <hr className=" text-neutral-600 my-2" />
       {currentStateType === "FailedToStart" && (
         <div className="text-red-400 p-4">
-          <h2>Failed to start plugin…</h2>
+          <h2>{t("pluginStates.failedToStartHeading")}</h2>
           {(
             (plugin.current_state as any).FailedToStart.reasons as string[]
           ).map((e) => (
