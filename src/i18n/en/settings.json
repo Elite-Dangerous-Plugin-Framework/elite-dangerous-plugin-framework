@@ -24,5 +24,18 @@
         "FailedAwaitImport": "Failed to import plugin. This is likely a bug with the plugin and should be reported to the developer.",
         "NoSettingsExported": "This plugin does not provide any settings.",
         "PluginNotFound": "The plugin could not be found internally. This is a bug and should be reported."
+    },
+    "update": {
+        "heading": "Updates",
+        "channel": {
+            "title": "Release Channel",
+            "stable": "Stable",
+            "stableText": "Only stable versions of EDPF",
+            "prerelease": "Prerelease",
+            "prereleaseText": "Only Prereleases of EDPF",
+            "merged": "Stable+Prerelease",
+            "mergedText": "Both Stable and Prereleases, whichever is newer"
+
+        }
     }
 }

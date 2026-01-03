@@ -18,72 +18,76 @@ export default function Settings() {
   const [activeId, setActiveId] = useState<string>();
   const commandWrapperRef = useRef<CommandWrapper>();
 
-  const { t, i18n } = useTranslation("settings")
-
+  const { t, i18n } = useTranslation("settings");
 
   useEffect(() => {
-    const updateUnlistens = [listen("core/plugins/update", async () => {
-      if (!commandWrapperRef.current) { return }
-      const p = await commandWrapperRef.current?.fetchAllPlugins()
-      if (!p.success) {
-        throw new Error("failed to fetch all plugins: " + p.reason)
-      }
-      const result = Object.entries(p.data)
-        .map(([id, v]) => ({ ...v, id }))
-        .sort((a, b) => a.id.localeCompare(b.id));
-      setPluginStates(result);
-    })];
+    const updateUnlistens = [
+      listen("core/plugins/update", async () => {
+        if (!commandWrapperRef.current) {
+          return;
+        }
+        const p = await commandWrapperRef.current?.fetchAllPlugins();
+        if (!p.success) {
+          throw new Error("failed to fetch all plugins: " + p.reason);
+        }
+        const result = Object.entries(p.data)
+          .map(([id, v]) => ({ ...v, id }))
+          .sort((a, b) => a.id.localeCompare(b.id));
+        setPluginStates(result);
+      }),
+    ];
     (async () => {
       if (!commandWrapperRef.current) {
         commandWrapperRef.current = new CommandWrapper(await getRootToken());
       }
-      commandWrapperRef.current.readSetting("core", "core.Locale").then(e => {
+      commandWrapperRef.current.readSetting("core", "core.Locale").then((e) => {
         if (!e.success) {
-          return
+          return;
         }
-        const locale = e.data.value ?? "en"
-        i18n.changeLanguage(locale)
-      })
-      updateUnlistens.push(listen("settings_update", async ({ payload }) => {
-        if (!commandWrapperRef.current) return
-        const decrypted = await commandWrapperRef.current!.decryptSettingsPayload(payload)
-        if (!decrypted || !decrypted.success) {
-          console.error("failed to RX settings update", { reason: decrypted.reason })
-          return
-        }
-        // For now, we just care about the locale. This might change in the future (e.g. theming)
-        if (decrypted.data.key === "core.Locale") {
-          const locale = decrypted.data.value ?? "en"
-          i18n.changeLanguage(locale)
-        }
-      }))
+        const locale = e.data.value ?? "en";
+        i18n.changeLanguage(locale);
+      });
+      updateUnlistens.push(
+        listen("settings_update", async ({ payload }) => {
+          if (!commandWrapperRef.current) return;
+          const decrypted =
+            await commandWrapperRef.current!.decryptSettingsPayload(payload);
+          if (!decrypted || !decrypted.success) {
+            console.error("failed to RX settings update", {
+              reason: decrypted.reason,
+            });
+            return;
+          }
+          // For now, we just care about the locale. This might change in the future (e.g. theming)
+          if (decrypted.data.key === "core.Locale") {
+            const locale = decrypted.data.value ?? "en";
+            i18n.changeLanguage(locale);
+          }
+        })
+      );
 
-      const p = await commandWrapperRef.current?.fetchAllPlugins()
+      const p = await commandWrapperRef.current?.fetchAllPlugins();
       if (!p.success) {
-        throw new Error("failed to fetch all plugins: " + p.reason)
+        throw new Error("failed to fetch all plugins: " + p.reason);
       }
       const result = Object.entries(p.data)
         .map(([id, v]) => ({ ...v, id }))
         .sort((a, b) => a.id.localeCompare(b.id));
       setPluginStates(result);
-
-
-
-
-    })()
+    })();
     return () => {
-      Promise.all(updateUnlistens).then((e) => e.forEach(e => e()));
+      Promise.all(updateUnlistens).then((e) => e.forEach((e) => e()));
     };
-
-  }, [])
-
+  }, []);
 
   useEffect(() => {
     const updateUnlisten = listen("core/plugins/update", async () => {
-      if (!commandWrapperRef.current) { return }
-      const p = await commandWrapperRef.current?.fetchAllPlugins()
+      if (!commandWrapperRef.current) {
+        return;
+      }
+      const p = await commandWrapperRef.current?.fetchAllPlugins();
       if (!p.success) {
-        throw new Error("failed to fetch all plugins: " + p.reason)
+        throw new Error("failed to fetch all plugins: " + p.reason);
       }
       const result = Object.entries(p.data)
         .map(([id, v]) => ({ ...v, id }))
@@ -98,11 +102,13 @@ export default function Settings() {
 
   useEffect(() => {
     (async () => {
-      if (!commandWrapperRef.current) { return }
-      const p = await commandWrapperRef.current?.fetchAllPlugins()
-      console.log({ p })
+      if (!commandWrapperRef.current) {
+        return;
+      }
+      const p = await commandWrapperRef.current?.fetchAllPlugins();
+      console.log({ p });
       if (!p.success) {
-        throw new Error("failed to fetch all plugins: " + p.reason)
+        throw new Error("failed to fetch all plugins: " + p.reason);
       }
       const result = Object.entries(p.data)
         .map(([id, v]) => ({ ...v, id }))
@@ -143,7 +149,8 @@ export default function Settings() {
           <hr className=" mx-2 text-gray-600" />
           <button
             onClick={() => {
-              commandWrapperRef.current && commandWrapperRef.current.openPluginsDir()
+              commandWrapperRef.current &&
+                commandWrapperRef.current.openPluginsDir();
             }}
             className="flex cursor-pointer flex-row justify-center items-center gap-2 py-2 hover:bg-white/10"
           >
@@ -153,9 +160,12 @@ export default function Settings() {
         </div>
       </section>
       <section id="settings" className="flex-1 pl-[200px] inline-flex flex-col">
-        {activeId === undefined || !commandWrapperRef.current ? (
+        {!commandWrapperRef.current ? (
+          <p>Loading…</p>
+        ) : activeId === undefined ? (
           <SettingsMainNoneSelected
             pluginStateCount={countPluginStates(pluginStates ?? [])}
+            cmd={commandWrapperRef.current}
           />
         ) : (
           <SettingsMain
@@ -168,8 +178,14 @@ export default function Settings() {
   );
 }
 
-function SettingsMain({ plugin, commands }: { plugin: PluginState | undefined, commands: CommandWrapper }) {
-  const { t } = useTranslation("settings")
+function SettingsMain({
+  plugin,
+  commands,
+}: {
+  plugin: PluginState | undefined;
+  commands: CommandWrapper;
+}) {
+  const { t } = useTranslation("settings");
 
   if (!plugin) {
     return (
@@ -207,8 +223,9 @@ function SettingsSidebarPlugin({
           ? PluginStateUIData[currentStateType].colour + "40"
           : "unset",
       }}
-      className={`inline-flex items-center gap-1 flex-row w-full p-2 text-xs cursor-pointer hover:bg-white/10 ${selected ? " underline" : ""
-        }`}
+      className={`inline-flex items-center gap-1 flex-row w-full p-2 text-xs cursor-pointer hover:bg-white/10 ${
+        selected ? " underline" : ""
+      }`}
     >
       <StatusIndicator state={currentStateType} />
       <p className=" inline-flex justify-baseline items-center gap-1">{name}</p>
@@ -217,10 +234,13 @@ function SettingsSidebarPlugin({
 }
 
 export function StatusIndicator({ state }: { state: PluginCurrentStateKeys }) {
-  const { t } = useTranslation("settings")
+  const { t } = useTranslation("settings");
 
   return (
-    <span title={t("pluginStates." + state as any)} className="relative flex size-3">
+    <span
+      title={t(("pluginStates." + state) as any)}
+      className="relative flex size-3"
+    >
       {PluginStateUIData[state].pulsating && (
         <span
           style={{ backgroundColor: PluginStateUIData[state].colour }}
