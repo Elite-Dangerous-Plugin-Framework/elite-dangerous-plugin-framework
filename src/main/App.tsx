@@ -21,7 +21,7 @@ import { listen, UnlistenFn } from "@tauri-apps/api/event";
 import { useTranslation } from "react-i18next";
 
 export default function App() {
-  const { i18n } = useTranslation("settings")
+  const { i18n } = useTranslation("settings");
 
   const [isEditMode, setIsEditMode] = useState(false);
   const [isParkingLotExpanded, setIsParkingLotExpanded] = useState(false);
@@ -40,7 +40,7 @@ export default function App() {
   );
 
   useEffect(() => {
-    const updateUnlistens: Promise<UnlistenFn>[] = []
+    const updateUnlistens: Promise<UnlistenFn>[] = [];
 
     let manager: PluginsManager | undefined;
     if (!pluginManagerRef.current || pluginManagerRef.current.destroyed) {
@@ -61,27 +61,31 @@ export default function App() {
           setLayout(e.data);
         });
 
-        command.readSetting("core", "core.Locale").then(e => {
+        command.readSetting("core", "core.Locale").then((e) => {
           if (!e.success) {
-            return
+            return;
           }
-          const locale = e.data.value ?? "en"
-          i18n.changeLanguage(locale)
-        })
+          const locale = e.data.value ?? "en";
+          i18n.changeLanguage(locale);
+        });
 
-        updateUnlistens.push(listen("settings_update", async ({ payload }) => {
-          if (!command) return
-          const decrypted = await command.decryptSettingsPayload(payload)
-          if (!decrypted || !decrypted.success) {
-            console.error("failed to RX settings update", { reason: decrypted.reason })
-            return
-          }
-          // For now, we just care about the locale. This might change in the future (e.g. theming)
-          if (decrypted.data.key === "core.Locale") {
-            const locale = decrypted.data.value ?? "en"
-            i18n.changeLanguage(locale)
-          }
-        }))
+        updateUnlistens.push(
+          listen("settings_update", async ({ payload }) => {
+            if (!command) return;
+            const decrypted = await command.decryptSettingsPayload(payload);
+            if (!decrypted || !decrypted.success) {
+              console.error("failed to RX settings update", {
+                reason: decrypted.reason,
+              });
+              return;
+            }
+            // For now, we just care about the locale. This might change in the future (e.g. theming)
+            if (decrypted.data.key === "core.Locale") {
+              const locale = decrypted.data.value ?? "en";
+              i18n.changeLanguage(locale);
+            }
+          })
+        );
 
         const reconciler = new PluginReconcilerImpl(command);
         manager = new PluginsManager(command, reconciler);
@@ -89,8 +93,8 @@ export default function App() {
         pluginManagerRef.current = manager;
 
         return () => {
-          Promise.all(updateUnlistens).then(e => e.forEach(e => e()))
-        }
+          Promise.all(updateUnlistens).then((e) => e.forEach((e) => e()));
+        };
       });
     } else {
       console.info("plugin manager ref already exists — not recreating");
@@ -210,7 +214,7 @@ export default function App() {
         <PluginStateCtx.Provider value={pluginState}>
           {layout ? (
             <VerticalLayout
-              className=" overflow-y-scroll h-full flex-1"
+              className=" overflow-y-scroll h-full flex-1 "
               layout={layout.root}
               editMode={isEditMode}
             />
@@ -231,9 +235,9 @@ export default function App() {
           style={
             currentDraggingItem
               ? {
-                width: currentDraggingItem.rect.current.initial?.width,
-                height: currentDraggingItem.rect.current.initial?.height,
-              }
+                  width: currentDraggingItem.rect.current.initial?.width,
+                  height: currentDraggingItem.rect.current.initial?.height,
+                }
               : undefined
           }
         >
