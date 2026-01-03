@@ -3,10 +3,10 @@ import {
   CommandWrapper,
   EncryptedCommandResponse,
 } from "../commands/commandWrapper";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { z } from "zod";
 import { IconCannotUpdate, IconDownload, IconUpToDate } from "../icons/updates";
-import { invoke } from "@tauri-apps/api/core";
+import { Channel, invoke } from "@tauri-apps/api/core";
 
 type UpdateState =
   | { type: "loading" }
@@ -15,7 +15,7 @@ type UpdateState =
   | { type: "updating"; bytes: number; total: number }
   | { type: "managedBySystem"; toolingName: string };
 
-function UpdateStateFragment({ updateState }: { updateState: UpdateState }) {
+function UpdateStateFragment({ updateState, startUpdate }: { updateState: UpdateState, startUpdate: () => void }) {
   switch (updateState.type) {
     case "loading":
       return (
@@ -48,8 +48,8 @@ function UpdateStateFragment({ updateState }: { updateState: UpdateState }) {
                 {updateState.newVersion}
               </code>
             </p>
-            <button className=" cursor-pointer p-2 border-2 w-full border-green-600 text-green-600 rounded-sm hover:text-white hover:bg-green-700 hover:border-green-700">
-              Install
+            <button onClick={() => startUpdate()} className=" cursor-pointer p-2 border-2 w-full border-green-600 text-green-600 rounded-sm hover:text-white hover:bg-green-700 hover:border-green-700">
+              Install and Update
             </button>
           </div>
         </div>
@@ -59,7 +59,7 @@ function UpdateStateFragment({ updateState }: { updateState: UpdateState }) {
         <div className="p-2 w-full gap-2 items-center inline-flex flex-row">
           <IconDownload className=" text-green-500 w-16 h-16" />
           <div className="w-full">
-            <p className="">Downloading Update…</p>
+            <p className="">Downloading Update… <span>[{Math.round(10 * updateState.bytes / 1024 / 1024) / 10}MiB / {Math.round(10 * updateState.total / 1024 / 1024) / 10}MiB]</span></p>
             <div className="w-full h-6 border-2 border-slate-700 rounded-lg flex flex-row">
               <div
                 style={{
@@ -147,19 +147,48 @@ export function SettingsEdpfUpdates({ cmd }: { cmd: CommandWrapper }) {
     })();
   }, [releaseChannel]);
 
+  const startUpdate = useCallback(async () => {
+    const { iv, payload } = await cmd.encryptPayload({})
+
+    const responseZod = z.discriminatedUnion("type", [
+      z.object({ type: z.literal("Started"), content_len: z.number() }),
+      z.object({ type: z.literal("Progress"), chunk_len: z.number() }),
+      z.object({ type: z.literal("Finished") }),
+    ])
+
+    const onEvent = new Channel<z.infer<typeof responseZod>>()
+    let totalLen = 0
+    let currentLen = 0
+    onEvent.onmessage = (m) => {
+      m = responseZod.parse(m)
+      switch (m.type) {
+        case "Started":
+          totalLen = m.content_len
+          return
+        case "Progress":
+          currentLen += m.chunk_len
+          setUpdateState({ type: "updating", bytes: Math.round(currentLen), total: totalLen })
+          return
+        case "Finished":
+        // noop. 
+      }
+    }
+
+    invoke("commit_update_edpf", { iv, payload, onEvent })
+  }, [])
+
   return (
     <>
-      <UpdateStateFragment updateState={updateState} />
+      <UpdateStateFragment startUpdate={startUpdate} updateState={updateState} />
       <section id="updates-channel-selection">
         <h3 className="text-sm">{t("update.channel.title")}</h3>
         <div className=" inline-flex flex-row flex-wrap gap-1 ">
           {(["stable", "prerelease", "merged"] as const).map((e) => (
             <button
-              className={`py-1 px-2 rounded-lg cursor-pointer  ${
-                e === releaseChannel
-                  ? "bg-green-700"
-                  : "bg-gray-800 opacity-100 hover:opacity-85"
-              }`}
+              className={`py-1 px-2 rounded-lg cursor-pointer  ${e === releaseChannel
+                ? "bg-green-700"
+                : "bg-gray-800 opacity-100 hover:opacity-85"
+                }`}
               onClick={async () => {
                 const resp = await cmd.writeSetting(
                   "core",

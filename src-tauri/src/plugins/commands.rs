@@ -9,7 +9,7 @@ use tauri_plugin_opener::OpenerExt;
 use tauri_plugin_store::StoreExt;
 use tauri_plugin_updater::UpdaterExt;
 use tokio::sync::RwLock;
-use tracing::{error, warn};
+use tracing::{error, info, warn};
 
 use crate::{
     plugins::{commands_armor, plugin_settings, PluginStateSource},
@@ -93,13 +93,12 @@ pub(crate) async fn check_update_edpf<R: Runtime>(
     struct Input {
         channel: ReleaseChannel,
     }
-    if let Err(e) = commands_armor::decrypt_str::<Input>(&data.root_token, &iv, &payload) {
-        return e.into();
+    let endpoint = match commands_armor::decrypt_str::<Input>(&data.root_token, &iv, &payload) {
+        Err(e) => return e.into(),
+        Ok(a) => a.channel.infer_endpoint(),
     };
 
     let pending_update_state = app.state::<PendingUpdate>();
-
-    let endpoint = ReleaseChannel::Prerelease.infer_endpoint();
 
     let updater = match match app.updater_builder().endpoints(vec![endpoint]) {
         Ok(x) => x,
@@ -115,6 +114,8 @@ pub(crate) async fn check_update_edpf<R: Runtime>(
         Ok(x) => x,
         Err(e) => return json!({"err": e, "hint": "look for updates"}),
     };
+
+    info!("has update: {}", update_check_response.is_some());
 
     #[derive(Serialize)]
     struct Response {
