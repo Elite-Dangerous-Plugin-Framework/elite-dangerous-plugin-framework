@@ -1,16 +1,22 @@
 pub(crate) mod event_watchdog;
 pub(crate) mod plugins;
-use std::{env, path::PathBuf, sync::Arc};
+pub(crate) mod updates;
+use std::{
+    env,
+    path::PathBuf,
+    sync::{Arc, Mutex},
+};
 
 use plugins::PluginsState;
 use tauri::{
-    menu::{MenuBuilder, MenuItem, MenuItemBuilder, SubmenuBuilder},
+    menu::{MenuBuilder, MenuItem, MenuItemBuilder},
     tray::TrayIconBuilder,
     webview::PageLoadEvent,
     Manager,
 };
 use tokio::sync::RwLock;
 use tracing::info;
+use updates::PendingUpdate;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -48,6 +54,7 @@ pub fn run() {
             tauri::async_runtime::spawn(async move {
                 let _ = event_watchdog::event_watchdog(&handle).await;
             });
+            app.manage(PendingUpdate(Mutex::new(None)));
 
             // big thanks to Ratul @ https://ratulmaharaj.com/posts/tauri-custom-menu/
             let quit_item = MenuItem::with_id(app, "edpf-quit", "Quit", true, None::<&str>)?;
@@ -56,18 +63,7 @@ pub fn run() {
                 .accelerator("CmdOrCtrl+,")
                 .build(app)?;
 
-            let theme = SubmenuBuilder::new(app, "Theme")
-                .text("theme-dark", "Dark")
-                .text("theme-light", "Light")
-                .text("theme-overlay", "Overlay")
-                .build()?;
             let menu = MenuBuilder::new(app)
-                .item(&theme)
-                .separator()
-                .text("edit-layout", "Edit")
-                .check("theme-on-top", "Always on Top")
-                .check("theme-locked", "Locked")
-                .separator()
                 .item(&settings)
                 .separator()
                 .item(&quit_item)
@@ -137,6 +133,8 @@ pub fn run() {
             plugins::commands::get_plugin,
             plugins::commands::open_url,
             plugins::get_root_token_once,
+            plugins::commands::check_update_edpf,
+            plugins::commands::commit_update_edpf,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

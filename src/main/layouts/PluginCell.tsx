@@ -1,6 +1,5 @@
 import z from "zod";
 import { PluginCellNodeZod } from "./types";
-import { GripIcon } from "../../icons/parkingLot";
 import { usePluginState } from "../hooks/usePluginState";
 import { useEffect, useRef } from "react";
 import { PluginStateUIData } from "../../settings/utils";
@@ -49,8 +48,6 @@ function PluginPortal({ reference }: PluginPortalProps) {
 }
 
 export default function PluginCell({ layout, editMode }: PluginCellProps) {
-  //const { max_height, min_height, min_width, max_width } = layout.meta;
-
   const { attributes, listeners, setNodeRef, active } = useDraggable({
     id: layout.plugin_id,
     data: layout,
@@ -69,16 +66,10 @@ export default function PluginCell({ layout, editMode }: PluginCellProps) {
         borderColor: borderColour as any,
       }}
       className={`${
-        editMode ? "relative rounded-lg mx-1 mt-1 border-1  min-h-12" : ""
-      } w-full ${
-        active?.id === layout.plugin_id ? "animate-pulse opacity-15" : ""
-      }`}
+        editMode ? "relative rounded-lg mx-1 mt-1 border min-h-12" : ""
+      }  ${active?.id === layout.plugin_id ? "animate-pulse opacity-15" : ""}`}
     >
-      <div
-        className={`${
-          editMode ? "blur-xs pointer-events-none" : "w-full text-sm"
-        }`}
-      >
+      <div className={`${editMode ? "hidden" : " text-sm"}`}>
         <PluginPortal
           reference={
             pluginState?.currentUiState.type === "Running"
@@ -88,16 +79,13 @@ export default function PluginCell({ layout, editMode }: PluginCellProps) {
         ></PluginPortal>
       </div>
       {editMode && (
-        <div className="absolute top-0 left-0 w-full h-full bg-black/20  p-1">
+        <div
+          ref={setNodeRef}
+          {...attributes}
+          {...listeners}
+          className="absolute top-0 left-0 w-full  h-full bg-black/20 cursor-move p-1"
+        >
           <div className="flex flex-row h-full items-center ">
-            <button
-              ref={setNodeRef}
-              {...attributes}
-              {...listeners}
-              className="h-full w-6 cursor-move"
-            >
-              <GripIcon className="w-12 -ml-3 h-full" />
-            </button>
             <div>
               <span className="flex items-center gap-1">
                 {layout.plugin_id}{" "}

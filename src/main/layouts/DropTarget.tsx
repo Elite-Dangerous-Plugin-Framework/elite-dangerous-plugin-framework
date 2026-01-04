@@ -37,10 +37,13 @@ export default function DropTarget({
           ? " bg-red-700 cursor-no-drop"
           : isOver
           ? "bg-green-700"
-          : "bg-green-900"
+          : "bg-green-900 animate-pulse"
       }`}
     >
       {isOver && <p className="text-center w-full">Release to place plugin</p>}
+      {!isOver && (
+        <p className="text-center w-full">Drag here to place plugin</p>
+      )}
     </div>
   );
 }

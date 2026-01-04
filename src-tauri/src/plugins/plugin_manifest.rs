@@ -2,6 +2,7 @@
 
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
+use tauri::Wry;
 
 /// Each Plugin must have a `manifest.json` which describes the plugin, it's requirements, updating strategies, and so on.
 #[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Eq, JsonSchema)]
@@ -52,4 +53,12 @@ pub(crate) enum PluginRemoteManifestResolutionStrategy {
     OfficialRegistry,
     /// same as official registry, expect that you can point to a different registry
     UnofficialRegistry { address: String },
+}
+
+impl PluginManifest {
+    pub(crate) fn inject_embedded_version(&mut self, app: &tauri::AppHandle<Wry>) {
+        match self {
+            PluginManifest::V1Alpha(x) => x.version = Some(app.package_info().version.to_string()),
+        }
+    }
 }

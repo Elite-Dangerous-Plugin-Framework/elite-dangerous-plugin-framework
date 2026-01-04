@@ -469,7 +469,11 @@ impl PluginsState {
                     };
 
                     let manifest = match PluginState::get_manifest(&path) {
-                        Ok(x) => x,
+                        Ok(mut x) => {
+                            // Embedded Plugins inherit the Version from EDPF
+                            x.inject_embedded_version(app_handle);
+                            x
+                        }
                         Err(e) => {
                             error!(
                                 "failed to get embedded plugin manifest for {}: {}",

@@ -4,6 +4,7 @@ import PluginCell from "./PluginCell";
 import { useDndContext } from "@dnd-kit/core";
 import React from "react";
 import DropTarget from "./DropTarget";
+import { EditPlugins } from "../../icons/navbar";
 
 export interface VerticalLayoutProps {
   layout: z.infer<typeof VerticalNodeZod>;
@@ -22,7 +23,7 @@ export default function VerticalLayout({
     <fieldset
       role="presentation"
       className={`flex flex-col w-full items-stretch gap-1 ${
-        editMode ? " border border-amber-700 rounded-lg px-1" : ""
+        editMode ? " border border-amber-700 rounded-lg px-2 " : ""
       } ${className}`}
     >
       {editMode && (
@@ -30,14 +31,20 @@ export default function VerticalLayout({
           Vertical Layout
         </legend>
       )}
-      {layout.children.length === 0 && editMode ? (
-        <div className=" opacity-25 inline-flex items-center flex-col">
-          <p className=" text-2xl">Layout empty</p>
-          <span className="p-2 text-xs">
-            Currently there are no plugins in this layout. Click the{" "}
+      {layout.children.length === 0 ? (
+        <div className="flex items-center flex-col">
+          <p className=" text-slate-600 text-2xl">Layout empty</p>
+          <div className=" p-2 text-xs text-slate-600 ">
+            Currently there are no plugins in this layout. Activate Edit Mode by
+            clicking the
+            <EditPlugins
+              className="text-xl text-white inline mx-2"
+              editing={false}
+            />
+            Icon, followed by the the{" "}
             <span className=" font-black">Parking Lot</span> Button in the
             Bottom Left corner and drag some plugins into this layout.
-          </span>
+          </div>
         </div>
       ) : null}
       {editMode && active ? (

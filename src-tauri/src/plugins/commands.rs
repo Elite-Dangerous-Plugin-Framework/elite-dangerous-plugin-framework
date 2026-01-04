@@ -1,15 +1,20 @@
 use std::{path::PathBuf, str::FromStr, sync::Arc};
 
+use chrono::{DateTime, Utc};
 use dirs::data_local_dir;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
-use tauri::{Emitter, Manager, Runtime};
+use tauri::{ipc::Channel, path::BaseDirectory, Emitter, Manager, Runtime};
 use tauri_plugin_opener::OpenerExt;
 use tauri_plugin_store::StoreExt;
+use tauri_plugin_updater::UpdaterExt;
 use tokio::sync::RwLock;
-use tracing::{error, warn};
+use tracing::{error, info, warn};
 
-use crate::plugins::{commands_armor, plugin_settings, PluginStateSource};
+use crate::{
+    plugins::{commands_armor, plugin_settings, PluginStateSource},
+    updates::{PendingUpdate, ReleaseChannel},
+};
 
 use super::{
     frontend_server::HttpServerState,
@@ -72,6 +77,110 @@ pub(crate) async fn open_url<R: Runtime>(
     match app.opener().open_url(url, None::<&str>) {
         Ok(_) => json!({"success": true}),
         Err(x) => json!({"success": false, "reason": x}),
+    }
+}
+
+#[tauri::command]
+pub(crate) async fn check_update_edpf<R: Runtime>(
+    app: tauri::AppHandle<R>,
+    payload: String,
+    iv: String,
+) -> serde_json::Value {
+    let state = app.state::<Arc<RwLock<PluginsState>>>();
+    let data = state.read().await;
+
+    #[derive(Deserialize)]
+    struct Input {
+        channel: ReleaseChannel,
+    }
+    let endpoint = match commands_armor::decrypt_str::<Input>(&data.root_token, &iv, &payload) {
+        Err(e) => return e.into(),
+        Ok(a) => a.channel.infer_endpoint(),
+    };
+
+    let pending_update_state = app.state::<PendingUpdate>();
+
+    let updater = match match app.updater_builder().endpoints(vec![endpoint]) {
+        Ok(x) => x,
+        Err(e) => return json!({"err": e, "hint": "build endpoints"}),
+    }
+    .build()
+    {
+        Ok(x) => x,
+        Err(e) => return json!({"err": e, "hint": "build updater"}),
+    };
+
+    let update_check_response = match updater.check().await {
+        Ok(x) => x,
+        Err(e) => return json!({"err": e, "hint": "look for updates"}),
+    };
+
+    info!("has update: {}", update_check_response.is_some());
+
+    #[derive(Serialize)]
+    struct Response {
+        new_version: String,
+        current_version: String,
+    }
+
+    let command_resp = update_check_response.as_ref().map(|update| Response {
+        new_version: update.version.clone(),
+        current_version: update.current_version.clone(),
+    });
+
+    *pending_update_state.0.lock().unwrap() = update_check_response;
+
+    match commands_armor::encrypt(&data.root_token, &command_resp) {
+        Ok(encrypted_with_iv) => encrypted_with_iv,
+        Err(e) => e.into(),
+    }
+}
+
+#[tauri::command]
+pub(crate) async fn commit_update_edpf<R: Runtime>(
+    app: tauri::AppHandle<R>,
+    payload: String,
+    iv: String,
+    on_event: Channel<serde_json::Value>,
+) -> serde_json::Value {
+    let state = app.state::<Arc<RwLock<PluginsState>>>();
+    let data = state.read().await;
+
+    #[derive(Deserialize)]
+    struct Input {}
+
+    if let Err(e) = commands_armor::decrypt_str::<Input>(&data.root_token, &iv, &payload) {
+        return e.into();
+    };
+    let pending_update_state = app.state::<PendingUpdate>();
+
+    let mut started = false;
+    let Some(update) = pending_update_state.0.lock().unwrap().take() else {
+        return json!({"success": false, "reason": "NO_PENDING_UPDATE"});
+    };
+
+    match update
+        .download_and_install(
+            |chunk_len, content_len| {
+                if !started {
+                    let _ = on_event.send(json!({"type": "Started", "content_len": content_len}));
+                    started = true;
+                }
+
+                let _ = on_event.send(json!({"type": "Progress", "chunk_len": chunk_len }));
+            },
+            || {
+                let _ = on_event.send(json!({"type": "Finished"}));
+            },
+        )
+        .await
+    {
+        Ok(_) => {
+            json!({"success": true})
+        }
+        Err(e) => {
+            json!({"success": false, "reason": "UPDATE_FAILED", "meta": e})
+        }
     }
 }
 
@@ -211,9 +320,9 @@ pub(crate) async fn open_settings<R: Runtime>(
             "settings",
             tauri::WebviewUrl::App("index.html#/settings".into()),
         )
+        .title("EDPF Settings")
         .build()
         .unwrap();
-        _ = win.set_title("EDPF Settings");
         win.set_focus()
     };
 
