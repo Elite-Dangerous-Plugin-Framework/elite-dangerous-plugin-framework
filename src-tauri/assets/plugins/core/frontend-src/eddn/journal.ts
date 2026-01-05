@@ -13,10 +13,31 @@ type LocationEvent = Extract<JournalEvent_BI, { event: "Location" }>;
 type SAAEvent = Extract<JournalEvent_BI, { event: "SAASignalsFound" }>;
 type CodexEntryEvent = Extract<JournalEvent_BI, { event: "CodexEntry" }>;
 
-export function extractAndStripJournal(ev: JournalEvent_BI) {
+type StrippedDocked = ReturnType<typeof stripDocked>;
+type StrippedFsdJump = ReturnType<typeof stripFsdJump>;
+type StrippedScan = ReturnType<typeof stripScan>;
+type StrippedLocation = ReturnType<typeof stripLocation>;
+type StrippedSAA = ReturnType<typeof stripSAA>;
+type StrippedCarrierJump = ReturnType<typeof stripCarrierJump>;
+type StrippedCodexEntry = ReturnType<typeof stripCodexEntry>;
+
+type StarPos = Extract<JournalEvent_BI, { event: "Location" }>["StarPos"];
+
+export function extractAndStripJournal(
+  ev: JournalEvent_BI,
+  starPos: StarPos
+):
+  | undefined
+  | StrippedDocked
+  | StrippedFsdJump
+  | StrippedScan
+  | StrippedLocation
+  | StrippedSAA
+  | StrippedCarrierJump
+  | StrippedCodexEntry {
   switch (ev.event) {
     case "Docked":
-      return stripDocked(ev);
+      return stripDocked(ev, starPos);
     case "FSDJump":
       return stripFsdJump(ev);
     case "Scan":
@@ -106,7 +127,7 @@ function stripLocation(ev: LocationEvent): Omit<
       return rest;
     }),
     Factions: rest.Factions?.map((e) => {
-      const { Happiness_Localised, ...rest } = e;
+      const { Happiness_Localised, MyReputation, ...rest } = e;
       return rest;
     }),
     Conflicts: rest.Conflicts?.map((e) => {
@@ -154,6 +175,16 @@ type StrippedConflict = Omit<
   NonNullable<FsdJumpEvent["Conflicts"]>[number],
   "Faction1" | "Faction2"
 > & { Faction1: StrippedConflictFaction; Faction2: StrippedConflictFaction };
+
+function stripStationEconomies(
+  input: NonNullable<DockedEvent["StationEconomies"]>[number]
+): Omit<
+  NonNullable<DockedEvent["StationEconomies"]>[number],
+  "Name_Localised"
+> {
+  const { Name_Localised, ...rest } = input;
+  return rest;
+}
 
 function stripFsdJump(ev: FsdJumpEvent): Omit<
   FsdJumpEvent,
@@ -214,7 +245,8 @@ function stripFsdJump(ev: FsdJumpEvent): Omit<
 }
 
 function stripDocked(
-  ev: DockedEvent
+  ev: DockedEvent,
+  starPos: StarPos
 ): Omit<
   DockedEvent,
   | "StationName_Localised"
@@ -225,7 +257,16 @@ function stripDocked(
   | "Wanted"
   | "CockpitBreach"
   | "ActiveFine"
-> {
+  | "StationEconomies"
+> & {
+  StarPos: StarPos;
+  StationEconomies:
+    | undefined
+    | Omit<
+        NonNullable<LocationEvent["StationEconomies"]>[number],
+        "Name_Localised"
+      >[];
+} {
   const {
     StationName_Localised,
     StationEconomy_Localised,
@@ -235,10 +276,18 @@ function stripDocked(
     Wanted,
     CockpitBreach,
     ActiveFine,
+    StationEconomies,
     ...rest
   } = ev;
-
-  return rest;
+  const resp = {
+    ...rest,
+    StarPos: starPos,
+    StationEconomies: StationEconomies?.map(stripStationEconomies),
+  };
+  return {
+    ...resp,
+    StationEconomies: StationEconomies?.map(stripStationEconomies),
+  };
 }
 
 function stripCarrierJump(ev: CarrierJumpEvent): Omit<
