@@ -2,5 +2,5 @@
   "type": "v1alpha",
   "name": "Core",
   "description": "Bundled Plugin providing basic functionality, common settings, and a basic status component.",
-  "version": "0.0.1"
+  "version": "replaced by edpf"
 }
