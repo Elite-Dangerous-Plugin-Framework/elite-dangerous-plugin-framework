@@ -59,6 +59,13 @@ export class RealEddnEmitter implements EddnEmitter {
         serializedPayload,
         message,
         resp: await result.text(),
+        schema: message.$schemaRef,
+      });
+    } else {
+      console.info("eddn happy", {
+        serializedPayload,
+        message,
+        schema: message.$schemaRef,
       });
     }
   }
