@@ -125,10 +125,9 @@ export class GameState {
         // EDPF only serves Live (4.X), for both Odyssey and Horizons
         if (ev.Odyssey === true) {
           // We enable the EDDN Listener
-          // TODO: add real URL
           this.#eddnEmitter = new RealEddnEmitter(
             "https://eddn.edcd.io:4430",
-            true
+            false
           );
         }
         break;
@@ -392,17 +391,17 @@ export class GameState {
           !hasItemsWithDifferentSystemAddress
         ) {
           // if here, all items are in the same location and in the current system. Time to build the payload
-          const msg = stripAndExtractFSSSignalDiscovered(
+          const message = stripAndExtractFSSSignalDiscovered(
             items,
             this.#state.system,
             this.#loadGame
           );
-          if (msg) {
+          if (message) {
             this.#eddnEmitter.emit({
               $schemaRef:
                 "https://eddn.edcd.io/schemas/fsssignaldiscovered/1" as const,
               header,
-              message: msg,
+              message,
             });
           }
         }
