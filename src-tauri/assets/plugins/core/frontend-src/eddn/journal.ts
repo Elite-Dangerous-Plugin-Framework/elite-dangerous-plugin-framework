@@ -4,6 +4,7 @@
  */
 
 import { type JournalEvent_BI } from "@elite-dangerous-plugin-framework/journal";
+import type { GameStateData } from "../gamestate";
 
 type DockedEvent = Extract<JournalEvent_BI, { event: "Docked" }>;
 type CarrierJumpEvent = Extract<JournalEvent_BI, { event: "CarrierJump" }>;
@@ -25,7 +26,7 @@ type StarPos = Extract<JournalEvent_BI, { event: "Location" }>["StarPos"];
 
 export function extractAndStripJournal(
   ev: JournalEvent_BI,
-  starPos: StarPos
+  systemData: NonNullable<GameStateData["system"]>,
 ):
   | undefined
   | StrippedDocked
@@ -37,15 +38,15 @@ export function extractAndStripJournal(
   | StrippedCodexEntry {
   switch (ev.event) {
     case "Docked":
-      return stripDocked(ev, starPos);
+      return stripDocked(ev, systemData.starPos);
     case "FSDJump":
       return stripFsdJump(ev);
     case "Scan":
-      return stripScan(ev);
+      return stripScan(ev, systemData.starPos);
     case "Location":
       return stripLocation(ev);
     case "SAASignalsFound":
-      return stripSAA(ev);
+      return stripSAA(ev, systemData.name, systemData.starPos);
     case "CarrierJump":
       return stripCarrierJump(ev);
     case "CodexEntry":
@@ -67,7 +68,7 @@ function stripCodexEntry(ev: CodexEntryEvent) {
   return rest;
 }
 
-function stripSAA(ev: SAAEvent) {
+function stripSAA(ev: SAAEvent, name: string, starPos: StarPos) {
   return {
     ...ev,
     Signals: ev.Signals.map((e) => {
@@ -78,6 +79,8 @@ function stripSAA(ev: SAAEvent) {
       const { Genus_Localised, ...rest } = e;
       return rest;
     }),
+    StarSystem: name,
+    StarPos: starPos,
   };
 }
 
@@ -145,10 +148,14 @@ function stripLocation(ev: LocationEvent): Omit<
   };
 }
 
-function stripScan(ev: ScanEvent): Omit<ScanEvent, "Materials"> & {
+function stripScan(
+  ev: ScanEvent,
+  starPos: StarPos,
+): Omit<ScanEvent, "Materials"> & {
   Materials:
     | undefined
     | Omit<NonNullable<ScanEvent["Materials"]>[number], "Name_Localised">[];
+  StarPos: StarPos;
 } {
   return {
     ...ev,
@@ -156,6 +163,7 @@ function stripScan(ev: ScanEvent): Omit<ScanEvent, "Materials"> & {
       const { Name_Localised, ...rest } = e;
       return rest;
     }),
+    StarPos: starPos,
   };
 }
 
@@ -177,7 +185,7 @@ type StrippedConflict = Omit<
 > & { Faction1: StrippedConflictFaction; Faction2: StrippedConflictFaction };
 
 function stripStationEconomies(
-  input: NonNullable<DockedEvent["StationEconomies"]>[number]
+  input: NonNullable<DockedEvent["StationEconomies"]>[number],
 ): Omit<
   NonNullable<DockedEvent["StationEconomies"]>[number],
   "Name_Localised"
@@ -246,7 +254,7 @@ function stripFsdJump(ev: FsdJumpEvent): Omit<
 
 function stripDocked(
   ev: DockedEvent,
-  starPos: StarPos
+  starPos: StarPos,
 ): Omit<
   DockedEvent,
   | "StationName_Localised"

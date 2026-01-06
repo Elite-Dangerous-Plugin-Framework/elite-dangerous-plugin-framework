@@ -9,8 +9,9 @@ import ReactDOM from "react-dom/client";
 import { GameState, type GameStateData } from "./gamestate";
 import { calculateSLEFImportData } from "./ships";
 
-import { SettingsRoot } from "./settings";
+import { EddnPreferencesZod, SettingsRoot } from "./settings";
 import type { PluginSettingsContextV1Alpha } from "@elite-dangerous-plugin-framework/core";
+import type z from "zod";
 
 export default class Main extends EDPFPluginElementV1Alpha {
   constructor() {
@@ -32,7 +33,7 @@ export class Settings extends EDPFPluginSettingsElementV1Alpha {
  */
 function eqUiState(
   a: GameStateData | undefined,
-  b: GameStateData | undefined
+  b: GameStateData | undefined,
 ): boolean {
   if ((!a && b) || (a && !b)) return false;
   if (!a && !b) return true;
@@ -70,7 +71,7 @@ function CmdrPanel({
       switch (site) {
         case "Inara":
           openUrl(
-            `https://inara.cz/elite/starsystem/?search=${state.system!.id}`
+            `https://inara.cz/elite/starsystem/?search=${state.system!.id}`,
           );
           break;
         case "Spansh":
@@ -78,7 +79,7 @@ function CmdrPanel({
           break;
       }
     },
-    [openUrl, state]
+    [openUrl, state],
   );
 
   const openStation = useCallback(
@@ -86,7 +87,7 @@ function CmdrPanel({
       switch (site) {
         case "Inara":
           openUrl(
-            `https://inara.cz/elite/station/?search=${state.station!.id}`
+            `https://inara.cz/elite/station/?search=${state.station!.id}`,
           );
           break;
         case "Spansh":
@@ -94,7 +95,7 @@ function CmdrPanel({
           break;
       }
     },
-    [openUrl, state]
+    [openUrl, state],
   );
 
   const openShip = useCallback(
@@ -103,17 +104,17 @@ function CmdrPanel({
       switch (site) {
         case "Coriolis":
           calculateSLEFImportData(state.vessel.slef, pluginVersion).then((e) =>
-            openUrl(`https://coriolis.io/import?data=${e}`)
+            openUrl(`https://coriolis.io/import?data=${e}`),
           );
           break;
         case "EDSY":
           calculateSLEFImportData(state.vessel.slef, pluginVersion).then((e) =>
-            openUrl(`https://edsy.org/#/I=${e}`)
+            openUrl(`https://edsy.org/#/I=${e}`),
           );
           break;
       }
     },
-    [openUrl, state]
+    [openUrl, state],
   );
 
   return (
@@ -287,6 +288,7 @@ function ContextMenu({
 
 function PluginRoot({ ctx }: { ctx: PluginContextV1Alpha }) {
   const journalStates = useRef<Record<string, GameState | "pending">>({});
+
   type Cmdr = string;
   const [uiState, setUiState] = useState<Record<Cmdr, GameStateData>>({});
 
@@ -305,11 +307,23 @@ function PluginRoot({ ctx }: { ctx: PluginContextV1Alpha }) {
         }
       }
     },
-    []
+    [],
   );
 
   useEffect(() => {
-    ctx.registerEventListener((evs) => {
+    const settingsListenerDestructor =
+      ctx.Capabilities.Settings.registerSettingsChangedListener((k, v) => {
+        if (k === "core.eddnPrefs") {
+          const parsed = EddnPreferencesZod.safeParse(v);
+          const prefs = parsed.success ? parsed.data : { enabled: true };
+          Object.values(journalStates.current)
+            .filter((e) => typeof e !== "string")
+            .map((e) => (typeof e === "string" ? (undefined as never) : e))
+            .forEach((e) => e.notifyEddnPrefsChanged(prefs));
+        }
+      });
+
+    const eventListenerDestructor = ctx.registerEventListener((evs) => {
       const newEvents = evs.map((e) => ({
         ...e,
         event: parseWithBigInt(e.event),
@@ -332,45 +346,56 @@ function PluginRoot({ ctx }: { ctx: PluginContextV1Alpha }) {
         // if we have the `Fileheader` Item within our list of events, we can assume that it is the former case and that we didnt miss any events because of it.
         // if we do not have the `Fileheader`, we drop this event and refetch all events for a journal instead
         const hasFileheader = newEvents.some(
-          (e) => e.event.event === "Fileheader"
+          (e) => e.event.event === "Fileheader",
         );
 
         if (hasFileheader) {
           // We have all the infos we need to spawn a new Plugin State
-          journalStates.current[file] = GameState.fromInitialState(
+          const gs = GameState.fromInitialState(
             newEvents.map((e) => e.event),
             file,
-            handleGamestateEvent
+            handleGamestateEvent,
+            ctx.pluginMeta.version!,
           );
+          journalStates.current[file] = gs;
+
+          ctx.Capabilities.Settings.getSetting("core.eddnPrefs").then((e) => {
+            gs.notifyEddnPrefsChanged((e as any) ?? { enabled: true });
+          });
         } else {
           // We drop the inbound events and instead just refetch the entire file
           journalStates.current[file] = "pending"; // discount Lock
           ctx.rereadCurrentJournals().then(async (e) => {
             // find the correct journal
             const relevantData = Object.values(e).find(
-              (e) => e.length > 0 && e[0]!.file === file
+              (e) => e.length > 0 && e[0]!.file === file,
             );
 
             if (!relevantData) {
               console.error(
-                `tried to reread entire Journal for CMDR ${cmdr} in file ${file}, but fetching all journals did not return this information`
+                `tried to reread entire Journal for CMDR ${cmdr} in file ${file}, but fetching all journals did not return this information`,
               );
               return;
             }
             const parsedJournals = relevantData.map((e) =>
-              parseWithBigInt(e.event)
+              parseWithBigInt(e.event),
             );
-            journalStates.current[file] = GameState.fromInitialState(
+            const gs = GameState.fromInitialState(
               parsedJournals,
               file,
-              handleGamestateEvent
+              handleGamestateEvent,
+              ctx.pluginMeta.version!,
             );
+            journalStates.current[file] = gs;
+            ctx.Capabilities.Settings.getSetting("core.eddnPrefs").then((e) => {
+              gs.notifyEddnPrefsChanged((e as any) ?? { enabled: true });
+            });
           });
         }
       } else {
         journalStateForFile.notifyAboutEvents(
           newEvents.map((e) => e.event),
-          true
+          true,
         );
       }
     });
@@ -384,13 +409,23 @@ function PluginRoot({ ctx }: { ctx: PluginContextV1Alpha }) {
         const { file } = anyEntry;
 
         const parsedJournals = items.map((e) => parseWithBigInt(e.event));
-        journalStates.current[file] = GameState.fromInitialState(
+        const gs = GameState.fromInitialState(
           parsedJournals,
           file,
-          handleGamestateEvent
+          handleGamestateEvent,
+          ctx.pluginMeta.version!,
         );
+        journalStates.current[file] = gs;
+        ctx.Capabilities.Settings.getSetting("core.eddnPrefs").then((e) => {
+          gs.notifyEddnPrefsChanged((e as any) ?? { enabled: true });
+        });
       }
     });
+
+    return () => {
+      eventListenerDestructor();
+      settingsListenerDestructor();
+    };
   }, []);
 
   const sortedUiStateKeys = Object.keys(uiState).toSorted();
@@ -414,7 +449,9 @@ function PluginRoot({ ctx }: { ctx: PluginContextV1Alpha }) {
             />
           ))
         ) : (
-          <div>Awaiting game launch or journal update</div>
+          <div className="animate-pulse">
+            Awaiting game launch or journal update
+          </div>
         )}
       </div>
     </>
