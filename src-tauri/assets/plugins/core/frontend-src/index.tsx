@@ -33,7 +33,7 @@ export class Settings extends EDPFPluginSettingsElementV1Alpha {
  */
 function eqUiState(
   a: GameStateData | undefined,
-  b: GameStateData | undefined,
+  b: GameStateData | undefined
 ): boolean {
   if ((!a && b) || (a && !b)) return false;
   if (!a && !b) return true;
@@ -71,7 +71,7 @@ function CmdrPanel({
       switch (site) {
         case "Inara":
           openUrl(
-            `https://inara.cz/elite/starsystem/?search=${state.system!.id}`,
+            `https://inara.cz/elite/starsystem/?search=${state.system!.id}`
           );
           break;
         case "Spansh":
@@ -79,7 +79,7 @@ function CmdrPanel({
           break;
       }
     },
-    [openUrl, state],
+    [openUrl, state]
   );
 
   const openStation = useCallback(
@@ -87,7 +87,7 @@ function CmdrPanel({
       switch (site) {
         case "Inara":
           openUrl(
-            `https://inara.cz/elite/station/?search=${state.station!.id}`,
+            `https://inara.cz/elite/station/?search=${state.station!.id}`
           );
           break;
         case "Spansh":
@@ -95,7 +95,7 @@ function CmdrPanel({
           break;
       }
     },
-    [openUrl, state],
+    [openUrl, state]
   );
 
   const openShip = useCallback(
@@ -104,17 +104,17 @@ function CmdrPanel({
       switch (site) {
         case "Coriolis":
           calculateSLEFImportData(state.vessel.slef, pluginVersion).then((e) =>
-            openUrl(`https://coriolis.io/import?data=${e}`),
+            openUrl(`https://coriolis.io/import?data=${e}`)
           );
           break;
         case "EDSY":
           calculateSLEFImportData(state.vessel.slef, pluginVersion).then((e) =>
-            openUrl(`https://edsy.org/#/I=${e}`),
+            openUrl(`https://edsy.org/#/I=${e}`)
           );
           break;
       }
     },
-    [openUrl, state],
+    [openUrl, state]
   );
 
   return (
@@ -307,7 +307,7 @@ function PluginRoot({ ctx }: { ctx: PluginContextV1Alpha }) {
         }
       }
     },
-    [],
+    []
   );
 
   useEffect(() => {
@@ -346,7 +346,7 @@ function PluginRoot({ ctx }: { ctx: PluginContextV1Alpha }) {
         // if we have the `Fileheader` Item within our list of events, we can assume that it is the former case and that we didnt miss any events because of it.
         // if we do not have the `Fileheader`, we drop this event and refetch all events for a journal instead
         const hasFileheader = newEvents.some(
-          (e) => e.event.event === "Fileheader",
+          (e) => e.event.event === "Fileheader"
         );
 
         if (hasFileheader) {
@@ -355,7 +355,7 @@ function PluginRoot({ ctx }: { ctx: PluginContextV1Alpha }) {
             newEvents.map((e) => e.event),
             file,
             handleGamestateEvent,
-            ctx.pluginMeta.version!,
+            ctx.pluginMeta.version!
           );
           journalStates.current[file] = gs;
 
@@ -368,23 +368,23 @@ function PluginRoot({ ctx }: { ctx: PluginContextV1Alpha }) {
           ctx.rereadCurrentJournals().then(async (e) => {
             // find the correct journal
             const relevantData = Object.values(e).find(
-              (e) => e.length > 0 && e[0]!.file === file,
+              (e) => e.length > 0 && e[0]!.file === file
             );
 
             if (!relevantData) {
               console.error(
-                `tried to reread entire Journal for CMDR ${cmdr} in file ${file}, but fetching all journals did not return this information`,
+                `tried to reread entire Journal for CMDR ${cmdr} in file ${file}, but fetching all journals did not return this information`
               );
               return;
             }
             const parsedJournals = relevantData.map((e) =>
-              parseWithBigInt(e.event),
+              parseWithBigInt(e.event)
             );
             const gs = GameState.fromInitialState(
               parsedJournals,
               file,
               handleGamestateEvent,
-              ctx.pluginMeta.version!,
+              ctx.pluginMeta.version!
             );
             journalStates.current[file] = gs;
             ctx.Capabilities.Settings.getSetting("core.eddnPrefs").then((e) => {
@@ -395,7 +395,7 @@ function PluginRoot({ ctx }: { ctx: PluginContextV1Alpha }) {
       } else {
         journalStateForFile.notifyAboutEvents(
           newEvents.map((e) => e.event),
-          true,
+          true
         );
       }
     });
@@ -413,7 +413,7 @@ function PluginRoot({ ctx }: { ctx: PluginContextV1Alpha }) {
           parsedJournals,
           file,
           handleGamestateEvent,
-          ctx.pluginMeta.version!,
+          ctx.pluginMeta.version!
         );
         journalStates.current[file] = gs;
         ctx.Capabilities.Settings.getSetting("core.eddnPrefs").then((e) => {
