@@ -27,9 +27,14 @@ export const OpenerPreferencesZod = z.object({
   stations: z.enum(availableForStations),
 });
 export const LocalePreferencesZod = z.enum(locales);
+export const EddnPreferencesZod = z.object({
+  enabled: z.boolean(),
+});
 
 export function SettingsRoot({ ctx }: { ctx: PluginSettingsContextV1Alpha }) {
   const [prefs, setPrefs] = useState<z.infer<typeof OpenerPreferencesZod>>();
+  const [eddnPrefs, setEddnPrefs] =
+    useState<z.infer<typeof EddnPreferencesZod>>();
   const [locale, setLocale] = useState<z.infer<typeof LocalePreferencesZod>>();
 
   async function commitLocale(
@@ -44,6 +49,20 @@ export function SettingsRoot({ ctx }: { ctx: PluginSettingsContextV1Alpha }) {
       setLocale(parsed.data);
     } else {
       setLocale("en");
+    }
+  }
+
+  async function commitEddn(newEddn?: z.infer<typeof EddnPreferencesZod>) {
+    if (newEddn) await ctx.Settings.writeSetting("core.eddnPrefs", newEddn);
+
+    const response = await ctx.Settings.getSetting("core.eddnPrefs");
+    const parsed = EddnPreferencesZod.safeParse(response);
+    if (parsed.success) {
+      setEddnPrefs(parsed.data);
+    } else {
+      setEddnPrefs({
+        enabled: true,
+      });
     }
   }
 
@@ -67,6 +86,7 @@ export function SettingsRoot({ ctx }: { ctx: PluginSettingsContextV1Alpha }) {
   useEffect(() => {
     commitLocale();
     commitPrefs();
+    commitEddn();
   }, []);
 
   if (!prefs || !locale) {
@@ -117,17 +137,42 @@ export function SettingsRoot({ ctx }: { ctx: PluginSettingsContextV1Alpha }) {
             />
           </div>
         </section>
-        <section id="eddn">
-          <h2 className="text-xl">EDDN Integration</h2>
-          <p className=" text-sm opacity-60">
-            Fine-tune which updates are sent to the Elite: Dangerous Data
-            Network
-          </p>
-          <div className="flex flex-row gap-2 flex-wrap italic">
-            Under construction, this will contain options to filter which events
-            are sent via EDDN in the future
-          </div>
-        </section>
+        {eddnPrefs && (
+          <section id="eddn">
+            <h2 className="text-xl">EDDN Integration</h2>
+            <p className=" text-sm opacity-60">
+              Fine-tune which updates are sent to the Elite: Dangerous Data
+              Network
+            </p>
+            <div className="flex items-center me-4">
+              <input
+                checked={eddnPrefs.enabled}
+                id="eddn-enabled-checkbox"
+                type="checkbox"
+                value=""
+                onChange={() => {
+                  commitEddn({
+                    ...eddnPrefs,
+                    enabled: !eddnPrefs.enabled,
+                  });
+                }}
+                className="w-6 h-6 border-default-medium rounded-xs focus:ring-2"
+              />
+              <label
+                htmlFor="eddn-enabled-checkbox"
+                className="select-none ms-2 text-sm font-medium text-heading"
+              >
+                Enable EDDN{" "}
+                <span className="text-sm opacity-60 italic">
+                  Uncheck this to stop sending Events to EDDN entirely.
+                </span>
+              </label>
+            </div>
+            <div className="my-2 bg-orange-200/20 border rounded-lg p-1 border-orange-300">
+              This is still under construction
+            </div>
+          </section>
+        )}
       </div>
     </>
   );

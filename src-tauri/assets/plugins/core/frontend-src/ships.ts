@@ -1,8 +1,10 @@
 import type LoadoutEvent_BI from "@elite-dangerous-plugin-framework/journal/dist/generated/Loadout.bi";
 
-function serializeJsonWithBigInt(input: object) {
-  const bigIntPrefix = "BIGINT_";
-  const bigIntSuffix = "_BIGINT";
+export function serializeJsonWithBigInt(input: object) {
+  const randomString = crypto.randomUUID();
+
+  const bigIntPrefix = randomString + "_";
+  const bigIntSuffix = "_" + randomString;
   const jsonWithMarkers = JSON.stringify(input, (_, val) => {
     if (typeof val !== "bigint") {
       return val;
@@ -12,13 +14,16 @@ function serializeJsonWithBigInt(input: object) {
 
   // this turns
   // {
-  //   "systemAddress": "BIGINT_12345_BIGINT"
+  //   "systemAddress": "someUUID_12345_someUUID"
   // }
   // into
   // {
   //   "systemAddress": 12345
   // }
   // such that the consumer can handle it as a number or do some special stuff to handle as BigInt also
+
+  // we dont use a stable marker such as _BIGINT because this could lead to a payload being broken if said string actually appears (e.g. Ship Name).
+  // random UUIDv4s are considered impropable to collide
   return jsonWithMarkers
     .replaceAll(`"${bigIntPrefix}`, "")
     .replaceAll(`${bigIntSuffix}"`, "");
@@ -26,7 +31,7 @@ function serializeJsonWithBigInt(input: object) {
 
 export async function calculateSLEFImportData(
   shipBuild: LoadoutEvent_BI,
-  version: string,
+  version: string
 ) {
   const payload = [
     {
@@ -50,7 +55,6 @@ export async function calculateSLEFImportData(
   // the result is collected into an ArrayBuffer
   const compressedPayload = await new Response(compressedStream).bytes();
   // from here the binary, compressed payload is encoded as URI-safe base64
-  // @ts-expect-error modern browsers support this: https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Uint8Array/toBase64
   const result = encodeURIComponent(compressedPayload.toBase64());
   return result;
 }

@@ -9,8 +9,9 @@ import ReactDOM from "react-dom/client";
 import { GameState, type GameStateData } from "./gamestate";
 import { calculateSLEFImportData } from "./ships";
 
-import { SettingsRoot } from "./settings";
+import { EddnPreferencesZod, SettingsRoot } from "./settings";
 import type { PluginSettingsContextV1Alpha } from "@elite-dangerous-plugin-framework/core";
+import type z from "zod";
 
 export default class Main extends EDPFPluginElementV1Alpha {
   constructor() {
@@ -287,6 +288,7 @@ function ContextMenu({
 
 function PluginRoot({ ctx }: { ctx: PluginContextV1Alpha }) {
   const journalStates = useRef<Record<string, GameState | "pending">>({});
+
   type Cmdr = string;
   const [uiState, setUiState] = useState<Record<Cmdr, GameStateData>>({});
 
@@ -309,7 +311,19 @@ function PluginRoot({ ctx }: { ctx: PluginContextV1Alpha }) {
   );
 
   useEffect(() => {
-    ctx.registerEventListener((evs) => {
+    const settingsListenerDestructor =
+      ctx.Capabilities.Settings.registerSettingsChangedListener((k, v) => {
+        if (k === "core.eddnPrefs") {
+          const parsed = EddnPreferencesZod.safeParse(v);
+          const prefs = parsed.success ? parsed.data : { enabled: true };
+          Object.values(journalStates.current)
+            .filter((e) => typeof e !== "string")
+            .map((e) => (typeof e === "string" ? (undefined as never) : e))
+            .forEach((e) => e.notifyEddnPrefsChanged(prefs));
+        }
+      });
+
+    const eventListenerDestructor = ctx.registerEventListener((evs) => {
       const newEvents = evs.map((e) => ({
         ...e,
         event: parseWithBigInt(e.event),
@@ -337,16 +351,21 @@ function PluginRoot({ ctx }: { ctx: PluginContextV1Alpha }) {
 
         if (hasFileheader) {
           // We have all the infos we need to spawn a new Plugin State
-          journalStates.current[file] = GameState.fromInitialState(
+          const gs = GameState.fromInitialState(
             newEvents.map((e) => e.event),
             file,
             handleGamestateEvent,
+            ctx.pluginMeta.version!,
           );
+          journalStates.current[file] = gs;
+
+          ctx.Capabilities.Settings.getSetting("core.eddnPrefs").then((e) => {
+            gs.notifyEddnPrefsChanged((e as any) ?? { enabled: true });
+          });
         } else {
           // We drop the inbound events and instead just refetch the entire file
           journalStates.current[file] = "pending"; // discount Lock
           ctx.rereadCurrentJournals().then(async (e) => {
-            console.info({ received: e, file, evs });
             // find the correct journal
             const relevantData = Object.values(e).find(
               (e) => e.length > 0 && e[0]!.file === file,
@@ -361,15 +380,23 @@ function PluginRoot({ ctx }: { ctx: PluginContextV1Alpha }) {
             const parsedJournals = relevantData.map((e) =>
               parseWithBigInt(e.event),
             );
-            journalStates.current[file] = GameState.fromInitialState(
+            const gs = GameState.fromInitialState(
               parsedJournals,
               file,
               handleGamestateEvent,
+              ctx.pluginMeta.version!,
             );
+            journalStates.current[file] = gs;
+            ctx.Capabilities.Settings.getSetting("core.eddnPrefs").then((e) => {
+              gs.notifyEddnPrefsChanged((e as any) ?? { enabled: true });
+            });
           });
         }
       } else {
-        journalStateForFile.notifyAboutEvents(newEvents.map((e) => e.event));
+        journalStateForFile.notifyAboutEvents(
+          newEvents.map((e) => e.event),
+          true,
+        );
       }
     });
     ctx.rereadCurrentJournals().then(async (e) => {
@@ -382,13 +409,23 @@ function PluginRoot({ ctx }: { ctx: PluginContextV1Alpha }) {
         const { file } = anyEntry;
 
         const parsedJournals = items.map((e) => parseWithBigInt(e.event));
-        journalStates.current[file] = GameState.fromInitialState(
+        const gs = GameState.fromInitialState(
           parsedJournals,
           file,
           handleGamestateEvent,
+          ctx.pluginMeta.version!,
         );
+        journalStates.current[file] = gs;
+        ctx.Capabilities.Settings.getSetting("core.eddnPrefs").then((e) => {
+          gs.notifyEddnPrefsChanged((e as any) ?? { enabled: true });
+        });
       }
     });
+
+    return () => {
+      eventListenerDestructor();
+      settingsListenerDestructor();
+    };
   }, []);
 
   const sortedUiStateKeys = Object.keys(uiState).toSorted();
@@ -412,7 +449,9 @@ function PluginRoot({ ctx }: { ctx: PluginContextV1Alpha }) {
             />
           ))
         ) : (
-          <div>Awaiting game launch or journal update</div>
+          <div className="animate-pulse">
+            Awaiting game launch or journal update
+          </div>
         )}
       </div>
     </>
