@@ -4,7 +4,7 @@
  */
 
 import { type JournalEvent_BI } from "@elite-dangerous-plugin-framework/journal";
-import type { GameStateData } from "../gamestate";
+import type { LoadGame, LoadGameAugmentation, SystemData } from "./eddn";
 
 type DockedEvent = Extract<JournalEvent_BI, { event: "Docked" }>;
 type CarrierJumpEvent = Extract<JournalEvent_BI, { event: "CarrierJump" }>;
@@ -26,7 +26,8 @@ type StarPos = Extract<JournalEvent_BI, { event: "Location" }>["StarPos"];
 
 export function extractAndStripJournal(
   ev: JournalEvent_BI,
-  systemData: NonNullable<GameStateData["system"]>,
+  systemData: SystemData,
+  lg: LoadGame
 ):
   | undefined
   | StrippedDocked
@@ -38,25 +39,25 @@ export function extractAndStripJournal(
   | StrippedCodexEntry {
   switch (ev.event) {
     case "Docked":
-      return stripDocked(ev, systemData.starPos);
+      return stripDocked(ev, systemData.starPos, lg);
     case "FSDJump":
-      return stripFsdJump(ev);
+      return stripFsdJump(ev, lg);
     case "Scan":
-      return stripScan(ev, systemData.starPos);
+      return stripScan(ev, systemData.starPos, lg);
     case "Location":
-      return stripLocation(ev);
+      return stripLocation(ev, lg);
     case "SAASignalsFound":
-      return stripSAA(ev, systemData.name, systemData.starPos);
+      return stripSAA(ev, systemData.name, systemData.starPos, lg);
     case "CarrierJump":
-      return stripCarrierJump(ev);
+      return stripCarrierJump(ev, lg);
     case "CodexEntry":
-      return stripCodexEntry(ev);
+      return stripCodexEntry(ev, lg);
     default:
       return undefined;
   }
 }
 
-function stripCodexEntry(ev: CodexEntryEvent) {
+function stripCodexEntry(ev: CodexEntryEvent, lg: LoadGame) {
   const {
     Name_Localised,
     Region_Localised,
@@ -65,10 +66,10 @@ function stripCodexEntry(ev: CodexEntryEvent) {
     NearestDestination_Localised,
     ...rest
   } = ev;
-  return rest;
+  return { ...rest, odyssey: lg.Odyssey, horizons: lg.Horizons };
 }
 
-function stripSAA(ev: SAAEvent, name: string, starPos: StarPos) {
+function stripSAA(ev: SAAEvent, name: string, starPos: StarPos, lg: LoadGame) {
   return {
     ...ev,
     Signals: ev.Signals.map((e) => {
@@ -81,10 +82,15 @@ function stripSAA(ev: SAAEvent, name: string, starPos: StarPos) {
     }),
     StarSystem: name,
     StarPos: starPos,
+    odyssey: lg.Odyssey,
+    horizons: lg.Horizons,
   };
 }
 
-function stripLocation(ev: LocationEvent): Omit<
+function stripLocation(
+  ev: LocationEvent,
+  lg: LoadGame
+): Omit<
   LocationEvent,
   | "Docked"
   | "OnFoot"
@@ -108,7 +114,7 @@ function stripLocation(ev: LocationEvent): Omit<
       >[];
   Factions: undefined | StrippedFaction[];
   Conflicts: undefined | StrippedConflict[];
-} {
+} & LoadGameAugmentation {
   const {
     Docked,
     OnFoot,
@@ -145,18 +151,21 @@ function stripLocation(ev: LocationEvent): Omit<
         Faction2: stripFaction(e.Faction2),
       };
     }),
+    odyssey: lg.Odyssey,
+    horizons: lg.Horizons,
   };
 }
 
 function stripScan(
   ev: ScanEvent,
   starPos: StarPos,
+  lg: LoadGame
 ): Omit<ScanEvent, "Materials"> & {
   Materials:
     | undefined
     | Omit<NonNullable<ScanEvent["Materials"]>[number], "Name_Localised">[];
   StarPos: StarPos;
-} {
+} & LoadGameAugmentation {
   return {
     ...ev,
     Materials: ev.Materials?.map((e) => {
@@ -164,6 +173,8 @@ function stripScan(
       return rest;
     }),
     StarPos: starPos,
+    odyssey: lg.Odyssey,
+    horizons: lg.Horizons,
   };
 }
 
@@ -185,7 +196,7 @@ type StrippedConflict = Omit<
 > & { Faction1: StrippedConflictFaction; Faction2: StrippedConflictFaction };
 
 function stripStationEconomies(
-  input: NonNullable<DockedEvent["StationEconomies"]>[number],
+  input: NonNullable<DockedEvent["StationEconomies"]>[number]
 ): Omit<
   NonNullable<DockedEvent["StationEconomies"]>[number],
   "Name_Localised"
@@ -194,7 +205,10 @@ function stripStationEconomies(
   return rest;
 }
 
-function stripFsdJump(ev: FsdJumpEvent): Omit<
+function stripFsdJump(
+  ev: FsdJumpEvent,
+  lg: LoadGame
+): Omit<
   FsdJumpEvent,
   | "SystemEconomy_Localised"
   | "SystemSecurity_Localised"
@@ -210,7 +224,7 @@ function stripFsdJump(ev: FsdJumpEvent): Omit<
 > & {
   Factions: undefined | StrippedFaction[];
   Conflicts: undefined | StrippedConflict[];
-} {
+} & LoadGameAugmentation {
   const {
     SystemEconomy_Localised,
     SystemSecurity_Localised,
@@ -249,12 +263,15 @@ function stripFsdJump(ev: FsdJumpEvent): Omit<
         Faction2: stripFaction(e.Faction2),
       };
     }),
+    odyssey: lg.Odyssey,
+    horizons: lg.Horizons,
   };
 }
 
 function stripDocked(
   ev: DockedEvent,
   starPos: StarPos,
+  lg: LoadGame
 ): Omit<
   DockedEvent,
   | "StationName_Localised"
@@ -274,7 +291,7 @@ function stripDocked(
         NonNullable<LocationEvent["StationEconomies"]>[number],
         "Name_Localised"
       >[];
-} {
+} & LoadGameAugmentation {
   const {
     StationName_Localised,
     StationEconomy_Localised,
@@ -287,18 +304,19 @@ function stripDocked(
     StationEconomies,
     ...rest
   } = ev;
-  const resp = {
+  return {
     ...rest,
     StarPos: starPos,
     StationEconomies: StationEconomies?.map(stripStationEconomies),
-  };
-  return {
-    ...resp,
-    StationEconomies: StationEconomies?.map(stripStationEconomies),
+    odyssey: lg.Odyssey,
+    horizons: lg.Horizons,
   };
 }
 
-function stripCarrierJump(ev: CarrierJumpEvent): Omit<
+function stripCarrierJump(
+  ev: CarrierJumpEvent,
+  lg: LoadGame
+): Omit<
   CarrierJumpEvent,
   | "Docked"
   | "OnFoot"
@@ -322,7 +340,7 @@ function stripCarrierJump(ev: CarrierJumpEvent): Omit<
       >[];
   Factions: undefined | StrippedFaction[];
   Conflicts: undefined | StrippedConflict[];
-} {
+} & LoadGameAugmentation {
   const {
     Docked,
     OnFoot,
@@ -366,5 +384,7 @@ function stripCarrierJump(ev: CarrierJumpEvent): Omit<
         Faction2: stripFaction(e.Faction2),
       };
     }),
+    odyssey: lg.Odyssey,
+    horizons: lg.Horizons,
   };
 }

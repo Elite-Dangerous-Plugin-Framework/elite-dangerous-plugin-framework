@@ -1,6 +1,13 @@
 import type { JournalEvent_BI } from "@elite-dangerous-plugin-framework/journal";
-import type { GameState } from "../gamestate";
+import type { GameStateData } from "../gamestate";
 import { serializeJsonWithBigInt } from "../ships";
+
+export type SystemData = NonNullable<GameStateData["system"]>;
+export type LoadGame = Extract<JournalEvent_BI, { event: "LoadGame" }>;
+export type LoadGameAugmentation = {
+  odyssey: LoadGame["Odyssey"];
+  horizons: LoadGame["Horizons"];
+};
 
 interface EDDNMessage {
   $schemaRef: string;
@@ -52,6 +59,13 @@ export class RealEddnEmitter implements EddnEmitter {
         serializedPayload,
         message,
         resp: await result.text(),
+        schema: message.$schemaRef,
+      });
+    } else {
+      console.info("eddn happy", {
+        serializedPayload,
+        message,
+        schema: message.$schemaRef,
       });
     }
   }
@@ -64,9 +78,6 @@ export function makeEddnHeader(
   cmdr: string,
   header: Extract<JournalEvent_BI, { event: "Fileheader" }>
 ) {
-  if (!cmdr) {
-    return undefined;
-  }
   return {
     uploaderID: cmdr,
     gameversion: header.gameversion,
