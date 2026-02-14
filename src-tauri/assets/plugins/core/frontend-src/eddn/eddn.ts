@@ -1,6 +1,8 @@
-import type { JournalEvent_BI } from "@elite-dangerous-plugin-framework/journal";
+import {
+  stringifyBigIntJSON,
+  type JournalEvent_BI,
+} from "@elite-dangerous-plugin-framework/journal";
 import type { GameStateData } from "../gamestate";
-import { serializeJsonWithBigInt } from "../ships";
 
 export type SystemData = NonNullable<GameStateData["system"]>;
 export type LoadGame = Extract<JournalEvent_BI, { event: "LoadGame" }>;
@@ -30,7 +32,10 @@ export class NoopEddnEmitter implements EddnEmitter {
 }
 
 export class RealEddnEmitter implements EddnEmitter {
-  constructor(private baseUrl: string, private testing: boolean) {
+  constructor(
+    private baseUrl: string,
+    private testing: boolean,
+  ) {
     if (!this.baseUrl.endsWith("/")) {
       this.baseUrl += "/";
     }
@@ -43,7 +48,7 @@ export class RealEddnEmitter implements EddnEmitter {
       message.$schemaRef += "/test";
     }
 
-    const serializedPayload = serializeJsonWithBigInt(message);
+    const serializedPayload = stringifyBigIntJSON(message);
 
     const targetUrl = this.baseUrl + "upload/";
 
@@ -76,7 +81,7 @@ export type EddnHeader = NonNullable<ReturnType<typeof makeEddnHeader>>;
 export function makeEddnHeader(
   edpfVersion: string,
   cmdr: string,
-  header: Extract<JournalEvent_BI, { event: "Fileheader" }>
+  header: Extract<JournalEvent_BI, { event: "Fileheader" }>,
 ) {
   return {
     uploaderID: cmdr,

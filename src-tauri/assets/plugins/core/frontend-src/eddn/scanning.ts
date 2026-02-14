@@ -1,36 +1,17 @@
-import { type JournalEvent_BI } from "@elite-dangerous-plugin-framework/journal";
+import {
+  type FSSAllBodiesFoundEvent_BI,
+  type FSSBodySignalsEvent_BI,
+  type FSSDiscoveryScanEvent_BI,
+  type FSSSignalDiscoveredEvent_BI,
+  type NavBeaconScanEvent_BI,
+  type ScanBaryCentreEvent_BI,
+} from "@elite-dangerous-plugin-framework/journal";
 import type { LoadGame, SystemData } from "./eddn";
 
-type FSSAllBodiesFoundEvent = Extract<
-  JournalEvent_BI,
-  { event: "FSSAllBodiesFound" }
->;
-
-type FSSDiscoveryScanEvent = Extract<
-  JournalEvent_BI,
-  { event: "FSSDiscoveryScan" }
->;
-
-type FSSSignalDiscoveredEvent = Extract<
-  JournalEvent_BI,
-  { event: "FSSSignalDiscovered" }
->;
-
-type FSSBodySignalsEvent = Extract<
-  JournalEvent_BI,
-  { event: "FSSBodySignals" }
->;
-
-type NavBeaconScanEvent = Extract<JournalEvent_BI, { event: "NavBeaconScan" }>;
-type ScanBaryCentreEvent = Extract<
-  JournalEvent_BI,
-  { event: "ScanBaryCentre" }
->;
-
 export function stripFssAllBodiesFound(
-  ev: FSSAllBodiesFoundEvent,
+  ev: FSSAllBodiesFoundEvent_BI,
   systemData: SystemData,
-  lg: LoadGame
+  lg: LoadGame,
 ) {
   return {
     ...ev,
@@ -41,9 +22,9 @@ export function stripFssAllBodiesFound(
 }
 
 export function stripFssDiscoveryScan(
-  ev: FSSDiscoveryScanEvent,
+  ev: FSSDiscoveryScanEvent_BI,
   systemData: SystemData,
-  lg: LoadGame
+  lg: LoadGame,
 ) {
   const { Progress, ...rest } = ev;
 
@@ -56,9 +37,9 @@ export function stripFssDiscoveryScan(
 }
 
 export function stripNavBeaconScan(
-  ev: NavBeaconScanEvent,
+  ev: NavBeaconScanEvent_BI,
   systemData: SystemData,
-  lg: LoadGame
+  lg: LoadGame,
 ) {
   return {
     ...ev,
@@ -70,9 +51,9 @@ export function stripNavBeaconScan(
 }
 
 export function stripScanBaryCentre(
-  ev: ScanBaryCentreEvent,
+  ev: ScanBaryCentreEvent_BI,
   systemData: SystemData,
-  lg: LoadGame
+  lg: LoadGame,
 ) {
   return {
     ...ev,
@@ -83,9 +64,9 @@ export function stripScanBaryCentre(
 }
 
 export function stripAndExtractFSSSignalDiscovered(
-  evs: FSSSignalDiscoveredEvent[],
+  evs: FSSSignalDiscoveredEvent_BI[],
   systemData: SystemData,
-  lg: LoadGame
+  lg: LoadGame,
 ) {
   const strippedEvs = evs
     .filter((e) => e.USSType !== "$USS_Type_MissionTarget;")
@@ -121,9 +102,9 @@ export function stripAndExtractFSSSignalDiscovered(
 }
 
 export function stripFssBodySignals(
-  ev: FSSBodySignalsEvent,
+  ev: FSSBodySignalsEvent_BI,
   systemData: SystemData,
-  lg: LoadGame
+  lg: LoadGame,
 ) {
   const { Signals, ...rest } = ev;
 

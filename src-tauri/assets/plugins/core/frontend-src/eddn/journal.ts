@@ -27,7 +27,7 @@ type StarPos = Extract<JournalEvent_BI, { event: "Location" }>["StarPos"];
 export function extractAndStripJournal(
   ev: JournalEvent_BI,
   systemData: SystemData,
-  lg: LoadGame
+  lg: LoadGame,
 ):
   | undefined
   | StrippedDocked
@@ -51,13 +51,13 @@ export function extractAndStripJournal(
     case "CarrierJump":
       return stripCarrierJump(ev, lg);
     case "CodexEntry":
-      return stripCodexEntry(ev, lg);
+      return stripCodexEntry(ev, systemData.starPos, lg);
     default:
       return undefined;
   }
 }
 
-function stripCodexEntry(ev: CodexEntryEvent, lg: LoadGame) {
+function stripCodexEntry(ev: CodexEntryEvent, starPos: StarPos, lg: LoadGame) {
   const {
     Name_Localised,
     Region_Localised,
@@ -66,7 +66,12 @@ function stripCodexEntry(ev: CodexEntryEvent, lg: LoadGame) {
     NearestDestination_Localised,
     ...rest
   } = ev;
-  return { ...rest, odyssey: lg.Odyssey, horizons: lg.Horizons };
+  return {
+    ...rest,
+    odyssey: lg.Odyssey,
+    horizons: lg.Horizons,
+    StarPos: starPos,
+  };
 }
 
 function stripSAA(ev: SAAEvent, name: string, starPos: StarPos, lg: LoadGame) {
@@ -89,7 +94,7 @@ function stripSAA(ev: SAAEvent, name: string, starPos: StarPos, lg: LoadGame) {
 
 function stripLocation(
   ev: LocationEvent,
-  lg: LoadGame
+  lg: LoadGame,
 ): Omit<
   LocationEvent,
   | "Docked"
@@ -159,7 +164,7 @@ function stripLocation(
 function stripScan(
   ev: ScanEvent,
   starPos: StarPos,
-  lg: LoadGame
+  lg: LoadGame,
 ): Omit<ScanEvent, "Materials"> & {
   Materials:
     | undefined
@@ -196,7 +201,7 @@ type StrippedConflict = Omit<
 > & { Faction1: StrippedConflictFaction; Faction2: StrippedConflictFaction };
 
 function stripStationEconomies(
-  input: NonNullable<DockedEvent["StationEconomies"]>[number]
+  input: NonNullable<DockedEvent["StationEconomies"]>[number],
 ): Omit<
   NonNullable<DockedEvent["StationEconomies"]>[number],
   "Name_Localised"
@@ -207,7 +212,7 @@ function stripStationEconomies(
 
 function stripFsdJump(
   ev: FsdJumpEvent,
-  lg: LoadGame
+  lg: LoadGame,
 ): Omit<
   FsdJumpEvent,
   | "SystemEconomy_Localised"
@@ -235,6 +240,7 @@ function stripFsdJump(
     FuelLevel,
     FuelUsed,
     JumpDist,
+    BoostUsed,
     ...rest
   } = ev;
 
@@ -271,7 +277,7 @@ function stripFsdJump(
 function stripDocked(
   ev: DockedEvent,
   starPos: StarPos,
-  lg: LoadGame
+  lg: LoadGame,
 ): Omit<
   DockedEvent,
   | "StationName_Localised"
@@ -315,7 +321,7 @@ function stripDocked(
 
 function stripCarrierJump(
   ev: CarrierJumpEvent,
-  lg: LoadGame
+  lg: LoadGame,
 ): Omit<
   CarrierJumpEvent,
   | "Docked"
