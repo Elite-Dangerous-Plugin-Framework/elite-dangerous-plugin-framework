@@ -34,7 +34,7 @@ function PluginRoot() {
       .filter((e) => typeof e !== "string")
       .map((e) => (typeof e === "string" ? (undefined as never) : e))
       .forEach((e) => e.notifyEddnPrefsChanged(prefs));
-  }, [eddnPrefs, eddnPrefsReady]);
+  }, [eddnPrefsReady]);
 
   useJournalEvents("jsonBigint", ({ cmdr, events, file }) => {
     const journalStateForFile = journalStates.current[file];
@@ -131,6 +131,7 @@ function PluginRoot() {
               preferredStationSite={"Inara"}
               preferredSystemSite={"Inara"}
               openUrl={function (url: string): void {
+                console.log({ ctx, url });
                 ctx.openUrl(url);
               }}
               pluginVersion={ctx.pluginMeta.version ?? "0.0.0-dev"}
