@@ -1,4 +1,4 @@
-#!/usr/bin/env bun
+#!/usr/bin/env zx
 
 // Used by CI to determine which version should be built. This will patch bundled plugin's and EDPF's versions
 // The rules are pretty straightforward:

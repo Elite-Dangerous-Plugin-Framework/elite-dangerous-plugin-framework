@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build",
-    "build:plugins": "bun run scripts/build-bundled-plugins.ts",
+    "build:plugins": "zx scripts/build-bundled-plugins.ts",
     "preview": "vite preview",
     "tauri": "tauri"
   },
