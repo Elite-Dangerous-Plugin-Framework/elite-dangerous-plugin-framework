@@ -20,15 +20,16 @@ jobs:
         with:
           ref: main
 
-      - uses: oven-sh/setup-bun@v2
+      - name: Setup Node
+        uses: actions/setup-node@v4
         with:
-          bun-version: latest
+          node-version: 24
 
       - name: Install dependencies
-        run: bun install
+        run: npm ci
 
       - name: Generate release channel JSONs and HTML
-        run: bun scripts/generate-version-jsons.ts
+        run: npx zx scripts/generate-version-jsons.ts
 
       - name: Configure Pages
         uses: actions/configure-pages@v5

@@ -1,20 +1,19 @@
-#!/usr/bin/env bun
+#!/usr/bin/env zx
 // not part of the source, this defines what's needed to build the plugin
 
+import { $ } from "zx";
+import { join } from "node:path";
+import { build } from "rolldown";
 
-import { $ } from "bun"
-import { join } from "node:path"
+const outputDir = join(process.cwd(), "../frontend");
 
-const outputDir = join(import.meta.dir, "..", "frontend")
-await $`rm -rf ${outputDir}`
-
-await Bun.build({
-  outdir: "../frontend",
-  format: "esm",
-  entrypoints: ["./index.tsx"],
-  target: "browser",
-  sourcemap: "external"
-})
-
-await $`tailwindcss --input style.css --output ${join(outputDir, "style.css")}`
-
+await build({
+  input: "index.tsx",
+  platform: "browser",
+  output: {
+    cleanDir: true,
+    file: "../frontend/index.js",
+  },
+});
+await $`tailwindcss --input style.css --output ${join(outputDir, "style.css")}`;
+console.log(join(outputDir, "index.js"));

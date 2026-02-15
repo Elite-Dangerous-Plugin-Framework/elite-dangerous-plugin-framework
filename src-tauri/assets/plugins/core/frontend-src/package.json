@@ -1,22 +1,24 @@
 {
   "name": "core",
-  "module": "index.ts",
   "type": "module",
   "devDependencies": {
     "@tailwindcss/cli": "^4.1.18",
     "@tsconfig/strictest": "^2.0.8",
-    "@types/bun": "latest",
-    "tailwindcss": "^4.1.18"
+    "@types/node": "^25.2.3",
+    "rolldown": "^1.0.0-rc.4",
+    "tailwindcss": "^4.1.18",
+    "zx": "^8.8.5"
   },
   "scripts": {
-    "build": "bun run build.ts"
+    "build": "zx build.ts"
   },
   "peerDependencies": {
     "typescript": "^5"
   },
   "dependencies": {
-    "@elite-dangerous-plugin-framework/core": "../../../../../npm-packages/core",
-    "@elite-dangerous-plugin-framework/journal": "../../../../../npm-packages/journal",
+    "@elite-dangerous-plugin-framework/core": "^0.0.1-pre2",
+    "@elite-dangerous-plugin-framework/journal": "^0.20260214.1",
+    "@elite-dangerous-plugin-framework/react": "^0.0.1-pre2",
     "@types/react-dom": "^19.2.3",
     "react": "^19.2.3",
     "react-dom": "^19.2.3",

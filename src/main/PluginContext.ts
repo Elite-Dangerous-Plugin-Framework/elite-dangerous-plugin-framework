@@ -1,15 +1,16 @@
 import { listen } from "@tauri-apps/api/event";
+import {} from "@elite-dangerous-plugin-framework/core/v1alpha";
+import { CommandWrapper } from "../commands/commandWrapper";
+import z from "zod";
 import {
   JournalEventItemV1Alpha,
   PluginContextV1Alpha,
-} from "@elite-dangerous-plugin-framework/core";
+} from "@elite-dangerous-plugin-framework/core/v1alpha";
 import {
   PluginContextV1AlphaCapabilities,
   PluginContextV1AlphaCapabilitiesSettings,
-} from "@elite-dangerous-plugin-framework/core/dist/v1alpha/context";
-import { CommandWrapper } from "../commands/commandWrapper";
-import z from "zod";
-import { PluginManifestV1AlphaWithId } from "@elite-dangerous-plugin-framework/core/dist/v1alpha/manifest";
+  PluginManifestV1AlphaWithId,
+} from "@elite-dangerous-plugin-framework/core/v1alpha/internal";
 
 export class PluginContextV1AlphaImpl implements PluginContextV1Alpha {
   /**
@@ -26,7 +27,7 @@ export class PluginContextV1AlphaImpl implements PluginContextV1Alpha {
     commands: CommandWrapper,
     private assetBase: string,
     private manifest: PluginManifestV1AlphaWithId,
-    private capabilities: PluginContextV1AlphaCapabilities
+    private capabilities: PluginContextV1AlphaCapabilities,
   ) {
     this.#commands = commands;
   }
@@ -65,7 +66,7 @@ export class PluginContextV1AlphaImpl implements PluginContextV1Alpha {
   async #notifyDestroy() {
     if (Object.keys(this.#shutdownListener).length >= 0) {
       const destructors: Promise<void>[] = Object.values(
-        this.#shutdownListener
+        this.#shutdownListener,
       );
       await Promise.race([
         new Promise<void>((res) => setTimeout(() => res(), 1_000)),
@@ -84,7 +85,7 @@ export class PluginContextV1AlphaImpl implements PluginContextV1Alpha {
     {};
 
   public registerEventListener(
-    callback: (events: JournalEventItemV1Alpha[]) => void
+    callback: (events: JournalEventItemV1Alpha[]) => void,
   ): () => void {
     const unlisten = listen("journal_events", (ev) => {
       const verifiedPayload = z
@@ -93,7 +94,7 @@ export class PluginContextV1AlphaImpl implements PluginContextV1Alpha {
             cmdr: z.string(),
             file: z.string(),
             event: z.string(),
-          })
+          }),
         )
         .parse(ev.payload);
 
@@ -130,7 +131,7 @@ export class PluginContextV1AlphaImpl implements PluginContextV1Alpha {
       result.data.map((e) => [
         e.cmdr,
         e.entries.map((f) => ({ cmdr: e.cmdr, file: e.file, event: f })),
-      ])
+      ]),
     );
   }
 
@@ -150,7 +151,7 @@ export class PluginContextV1AlphaImpl implements PluginContextV1Alpha {
     }
     if (!importPathZod.success) {
       throw new Error(
-        "failed to get Plugin Import Path: " + importPathZod.reason
+        "failed to get Plugin Import Path: " + importPathZod.reason,
       );
     }
     const importPath = importPathZod.data.import;
@@ -163,8 +164,8 @@ export class PluginContextV1AlphaImpl implements PluginContextV1Alpha {
       PluginContextCapabilitiesV1AlphaImpl.create(
         commands,
         pluginId,
-        assetsBase
-      )
+        assetsBase,
+      ),
     );
     return {
       ctx,
@@ -177,14 +178,12 @@ export class PluginContextV1AlphaImpl implements PluginContextV1Alpha {
   }
 }
 
-export class PluginContextCapabilitiesV1AlphaImpl
-  implements PluginContextV1AlphaCapabilities
-{
+export class PluginContextCapabilitiesV1AlphaImpl implements PluginContextV1AlphaCapabilities {
   #assetBase: string;
 
   constructor(
     private settings: PluginContextV1AlphaCapabilitiesSettings,
-    assetBase: string
+    assetBase: string,
   ) {
     this.#assetBase = assetBase;
   }
@@ -199,20 +198,21 @@ export class PluginContextCapabilitiesV1AlphaImpl
   static create(command: CommandWrapper, pluginId: string, assetsBase: string) {
     const settings = new PluginContextV1AlphaCapabilitiesSettingsImpl(
       command,
-      pluginId
+      pluginId,
     );
     return new PluginContextCapabilitiesV1AlphaImpl(settings, assetsBase);
   }
 }
 
-export class PluginContextV1AlphaCapabilitiesSettingsImpl
-  implements PluginContextV1AlphaCapabilitiesSettings
-{
-  constructor(private commands: CommandWrapper, private pluginId: string) {}
+export class PluginContextV1AlphaCapabilitiesSettingsImpl implements PluginContextV1AlphaCapabilitiesSettings {
+  constructor(
+    private commands: CommandWrapper,
+    private pluginId: string,
+  ) {}
 
   async writeSetting<T>(
     key: string,
-    value: T | undefined
+    value: T | undefined,
   ): Promise<T | undefined> {
     const resp = await this.commands.writeSetting(this.pluginId, key, value);
     if (!resp.success) {
@@ -235,7 +235,7 @@ export class PluginContextV1AlphaCapabilitiesSettingsImpl
     {};
 
   registerSettingsChangedListener(
-    callback: (key: string, value: unknown | undefined) => void
+    callback: (key: string, value: unknown | undefined) => void,
   ): () => void {
     const sym = Symbol();
     this.#eventListenerDestructors[sym] = "awaitingResolve";
@@ -277,7 +277,7 @@ export class PluginContextV1AlphaCapabilitiesSettingsImpl
   }
   public destroy() {
     Object.values(this.#eventListenerDestructors).forEach(
-      (e) => typeof e === "function" && e()
+      (e) => typeof e === "function" && e(),
     );
     this.#eventListenerDestructors = {};
   }

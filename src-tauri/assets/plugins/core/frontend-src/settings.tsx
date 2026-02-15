@@ -1,8 +1,8 @@
-import type { PluginSettingsContextV1Alpha } from "@elite-dangerous-plugin-framework/core";
 import { useEffect, useState } from "react";
 
 import * as z from "zod/mini";
 import { LanguageIcon } from "./icones/settingsLocale";
+import { useSettingsContext } from "@elite-dangerous-plugin-framework/react/v1alpha";
 
 const availableForShips = ["Coriolis", "EDSY"] as const;
 const availableForStations = ["Inara", "Spansh"] as const;
@@ -31,11 +31,12 @@ export const EddnPreferencesZod = z.object({
   enabled: z.boolean(),
 });
 
-export function SettingsRoot({ ctx }: { ctx: PluginSettingsContextV1Alpha }) {
+export function SettingsRoot() {
   const [prefs, setPrefs] = useState<z.infer<typeof OpenerPreferencesZod>>();
   const [eddnPrefs, setEddnPrefs] =
     useState<z.infer<typeof EddnPreferencesZod>>();
   const [locale, setLocale] = useState<z.infer<typeof LocalePreferencesZod>>();
+  const ctx = useSettingsContext();
 
   async function commitLocale(
     newLocale?: z.infer<typeof LocalePreferencesZod>,

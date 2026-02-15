@@ -1,12 +1,12 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "elite-dangerous-plugin-framework",
-  "version": "0.0.1-pre5",
+  "version": "0.0.2-pre2",
   "identifier": "elite-dangerous-plugin-framework.app",
   "build": {
-    "beforeDevCommand": "bun run dev",
+    "beforeDevCommand": "npm run dev",
     "devUrl": "http://localhost:1420",
-    "beforeBuildCommand": "bun run build:plugins && bun run build",
+    "beforeBuildCommand": "npm run build:plugins && npm run build",
     "frontendDist": "../dist"
   },
   "app": {
@@ -33,11 +33,7 @@
   "bundle": {
     "active": true,
     "createUpdaterArtifacts": true,
-    "targets": [
-      "deb",
-      "rpm",
-      "msi"
-    ],
+    "targets": ["deb", "rpm", "msi"],
     "category": "Game",
     "copyright": "LGPL",
     "homepage": "https://elite-dangerous-plugin-framework.github.io/",
