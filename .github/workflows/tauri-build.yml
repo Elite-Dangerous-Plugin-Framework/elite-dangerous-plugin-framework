@@ -10,6 +10,10 @@ on:
     tags:
       - "v*"
 
+concurrency:
+  group: tauri-build
+  cancel-in-progress: true
+
 jobs:
   build-edpf:
     name: Build EDPF for ${{ matrix.buildSuffix }}
@@ -56,6 +60,9 @@ jobs:
 
       - name: install frontend dependencies
         run: npm ci 
+      - name: install plugin deps (core)
+        run: npm ci
+        working-directory: ./src-tauri/assets/plugins/core/frontend-src
       - name: build frontend dependencies (libs and plugins)
         run: npm run build:plugins .
 

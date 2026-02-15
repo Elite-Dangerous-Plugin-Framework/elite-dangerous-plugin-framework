@@ -64,7 +64,7 @@ if (!sharedMostRecent) throw new Error("No releases at all!");
 
 let listItems = [];
 
-const outDir = join(import.meta.dir, "generated_jsons_dist");
+const outDir = join(import.meta.dirname, "generated_jsons_dist");
 await rm(outDir, { recursive: true, force: true });
 await mkdir(outDir, { recursive: true });
 

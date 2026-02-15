@@ -6,15 +6,14 @@ import { join } from "node:path";
 import { build } from "rolldown";
 
 const outputDir = join(process.cwd(), "../frontend");
-await $`npm ci`;
 await build({
   input: "index.tsx",
   platform: "browser",
   output: {
     cleanDir: true,
-    file: "../frontend/index.js",
+    file: join(outputDir, "index.js"),
   },
   tsconfig: join(process.cwd(), "tsconfig.json"),
 });
-await $`tailwindcss --input style.css --output ${join(outputDir, "style.css")}`;
-console.log(join(outputDir, "index.js"));
+
+await $`tailwindcss --input style.css --output "${"../frontend/style.css"}"`;
