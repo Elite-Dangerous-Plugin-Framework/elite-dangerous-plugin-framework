@@ -6,9 +6,11 @@
 import { $ } from "zx";
 import { writeFile } from "node:fs/promises";
 import { readFile } from "node:fs/promises";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { coerce } from "semver";
 import { env } from "process";
+import {} from "zx";
+import { fileURLToPath } from "node:url";
 
 // Are we tagged with a `v*` Tag?
 // yes  => this is a tagged build. Strip the `v` and use the remainder for the version. (read further)
@@ -28,8 +30,9 @@ if (env["GITHUB_EVENT_NAME"] !== "push") {
   );
 }
 
+const dirLocation = dirname(fileURLToPath(import.meta.url));
 const tauriConfFilePath = join(
-  import.meta.dir,
+  dirLocation,
   "..",
   "src-tauri",
   "tauri.conf.json",
@@ -74,17 +77,17 @@ if (ref.startsWith("refs/tags/v")) {
 
 // we write a file containing the relevant release channel for the next step
 await writeFile(
-  join(import.meta.dir, "..", ".GITHUB_RELEASE_CHANNEL"),
+  join(dirLocation, "..", ".GITHUB_RELEASE_CHANNEL"),
   channel,
   "utf-8",
 );
 await writeFile(
-  join(import.meta.dir, "..", ".GITHUB_TAG_NAME"),
+  join(dirLocation, "..", ".GITHUB_TAG_NAME"),
   channel === "dev" ? "" : "v" + safeVersion,
   "utf-8",
 );
 await writeFile(
-  join(import.meta.dir, "..", ".GITHUB_TAG_PRERELEASE"),
+  join(dirLocation, "..", ".GITHUB_TAG_PRERELEASE"),
   "" + (channel === "beta"),
   "utf-8",
 );
