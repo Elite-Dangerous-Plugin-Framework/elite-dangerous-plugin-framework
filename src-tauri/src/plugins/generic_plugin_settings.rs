@@ -3,13 +3,14 @@
 //! E.g. if a plugin is enabled, if the plugin has specific permissions defined (unused for now)
 //! also if the Plugin is new / unknown
 
+use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Runtime};
 use tauri_plugin_store::StoreBuilder;
 use tracing::error;
 
 use super::internal_plugin_ids;
-#[derive(Debug, Serialize, Deserialize, Default)]
+#[derive(Debug, Serialize, Deserialize, Default, Clone, JsonSchema, PartialEq, Eq)]
 /// This contains the entire **generic** Configurable State for a plugin.  
 /// Settings read/set from the Plugins themselves are managed separately
 pub(crate) struct GenericPluginSettings {
@@ -125,7 +126,7 @@ impl GenericPluginSettings {
     }
 }
 
-#[derive(Debug, Serialize, Deserialize, Default)]
+#[derive(Debug, Serialize, Deserialize, Default, Clone, JsonSchema, PartialEq, Eq)]
 pub(crate) enum PluginSettingsUpdateStrategy {
     /// The Plugin is upgraded without the User needing to interfere. If the Plugin is started, it will be restarted
     Autoupdate,

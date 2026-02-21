@@ -100,7 +100,11 @@ async fn serve_asset(
             return StatusCode::NOT_FOUND.into_response();
         }
     };
-    let path_to_resource = safe_join(&root, StdPath::new(&tail));
+    let path_to_resource = root.join(tail);
+    if !path_to_resource.starts_with(root) {
+        return StatusCode::FORBIDDEN.into_response();
+    }
+
     let bytes = match tokio::fs::read(&path_to_resource).await {
         Ok(bytes) => bytes,
         Err(_) => return StatusCode::NOT_FOUND.into_response(),

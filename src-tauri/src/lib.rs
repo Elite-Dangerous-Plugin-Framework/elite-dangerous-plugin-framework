@@ -7,7 +7,7 @@ use std::{
     sync::{Arc, Mutex},
 };
 
-use plugins::PluginsState;
+use plugins::{FrontendPluginsState, PluginsState};
 use tauri::{
     menu::{MenuBuilder, MenuItem, MenuItemBuilder},
     tray::TrayIconBuilder,
@@ -37,6 +37,8 @@ pub fn run() {
             app.get_webview_window("main").unwrap().open_devtools();
 
             app.manage(Arc::new(RwLock::new(PluginsState::new())));
+            app.manage(Arc::new(RwLock::new(FrontendPluginsState::new())));
+
             // Spawns the HTTP Server
             let handle = app.app_handle().clone();
             tauri::async_runtime::spawn(async move {
@@ -121,11 +123,7 @@ pub fn run() {
             plugins::commands::get_import_path_for_plugin,
             plugins::commands::open_settings,
             plugins::commands::open_plugins_dir,
-            plugins::commands::start_plugin,
-            plugins::commands::stop_plugin,
-            plugins::commands::start_plugin_failed,
-            plugins::commands::finalize_stop_plugin,
-            plugins::commands::finalize_start_plugin,
+            plugins::commands::put_or_get_plugin_config,
             plugins::commands::sync_main_layout,
             plugins::commands::reread_active_journal,
             plugins::commands::write_setting,

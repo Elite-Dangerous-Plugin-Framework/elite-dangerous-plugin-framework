@@ -1,10 +1,9 @@
 use std::{path::PathBuf, str::FromStr, sync::Arc};
 
-use chrono::{DateTime, Utc};
 use dirs::data_local_dir;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
-use tauri::{ipc::Channel, path::BaseDirectory, Emitter, Manager, Runtime};
+use tauri::{ipc::Channel, Emitter, Manager, Runtime};
 use tauri_plugin_opener::OpenerExt;
 use tauri_plugin_store::StoreExt;
 use tauri_plugin_updater::UpdaterExt;
@@ -12,7 +11,7 @@ use tokio::sync::RwLock;
 use tracing::{error, info, warn};
 
 use crate::{
-    plugins::{commands_armor, plugin_settings, PluginStateSource},
+    plugins::{commands_armor, plugin_settings, PluginReconcileReceiver, PluginStateSource},
     updates::{PendingUpdate, ReleaseChannel},
 };
 
@@ -37,9 +36,6 @@ pub(crate) async fn fetch_all_plugins<R: Runtime>(
     if let Err(e) = commands_armor::decrypt_str::<Input>(&data.root_token, &iv, &payload) {
         return e.into();
     };
-
-    let state = app.state::<Arc<RwLock<PluginsState>>>();
-    let data = state.read().await;
 
     let response = match serde_json::to_value(&data.plugin_states) {
         Ok(x) => x,
@@ -87,13 +83,17 @@ pub(crate) async fn check_update_edpf<R: Runtime>(
     iv: String,
 ) -> serde_json::Value {
     let state = app.state::<Arc<RwLock<PluginsState>>>();
-    let data = state.read().await;
+
+    let root_token = {
+        let data = state.read().await;
+        data.root_token
+    };
 
     #[derive(Deserialize)]
     struct Input {
         channel: ReleaseChannel,
     }
-    let endpoint = match commands_armor::decrypt_str::<Input>(&data.root_token, &iv, &payload) {
+    let endpoint = match commands_armor::decrypt_str::<Input>(&root_token, &iv, &payload) {
         Err(e) => return e.into(),
         Ok(a) => a.channel.infer_endpoint(),
     };
@@ -130,7 +130,7 @@ pub(crate) async fn check_update_edpf<R: Runtime>(
 
     *pending_update_state.0.lock().unwrap() = update_check_response;
 
-    match commands_armor::encrypt(&data.root_token, &command_resp) {
+    match commands_armor::encrypt(&root_token, &command_resp) {
         Ok(encrypted_with_iv) => encrypted_with_iv,
         Err(e) => e.into(),
     }
@@ -144,12 +144,14 @@ pub(crate) async fn commit_update_edpf<R: Runtime>(
     on_event: Channel<serde_json::Value>,
 ) -> serde_json::Value {
     let state = app.state::<Arc<RwLock<PluginsState>>>();
-    let data = state.read().await;
-
+    let root_token = {
+        let data = state.read().await;
+        data.root_token
+    };
     #[derive(Deserialize)]
     struct Input {}
 
-    if let Err(e) = commands_armor::decrypt_str::<Input>(&data.root_token, &iv, &payload) {
+    if let Err(e) = commands_armor::decrypt_str::<Input>(&root_token, &iv, &payload) {
         return e.into();
     };
     let pending_update_state = app.state::<PendingUpdate>();
@@ -237,14 +239,17 @@ pub(crate) async fn open_plugins_dir<R: Runtime>(
 ) -> serde_json::Value {
     use tauri_plugin_opener::OpenerExt;
     let state = app.state::<Arc<RwLock<PluginsState>>>();
-    let data = state.read().await;
+    let root_token = {
+        let data = state.read().await;
+        data.root_token
+    };
 
     #[derive(Deserialize)]
     #[serde(rename_all = "camelCase")]
     struct Input {
         plugin_id: Option<String>,
     }
-    let payload = match commands_armor::decrypt_str::<Input>(&data.root_token, &iv, &payload) {
+    let payload = match commands_armor::decrypt_str::<Input>(&root_token, &iv, &payload) {
         Ok(x) => x,
         Err(e) => return e.into(),
     };
@@ -303,12 +308,15 @@ pub(crate) async fn open_settings<R: Runtime>(
     payload: String,
     iv: String,
 ) -> serde_json::Value {
-    let state = app.state::<Arc<RwLock<PluginsState>>>();
+    let root_token = {
+        let state = app.state::<Arc<RwLock<PluginsState>>>();
+        let data = state.read().await;
+        data.root_token
+    };
 
     #[derive(Deserialize)]
     struct Input {} // admittedly, this is a bit silly
-    let data = state.read().await;
-    if let Err(e) = commands_armor::decrypt_str::<Input>(&data.root_token, &iv, &payload) {
+    if let Err(e) = commands_armor::decrypt_str::<Input>(&root_token, &iv, &payload) {
         return e.into();
     };
 
@@ -336,175 +344,108 @@ pub(crate) async fn open_settings<R: Runtime>(
     }
 }
 
+/// This Command is used to set persistent, "generic" settings.
+/// This includes
+/// - if the plugin should be started
+/// - updating strategies
+/// - additional capabilities (like reading files on the FS)
+///
+/// As with nearly all other commands, the command requires the root token, and the data is encrypted over the wire
+/// If this command deems there to be a change, a reconcile is enqueued.
 #[tauri::command]
-pub(crate) async fn start_plugin<R: Runtime>(
+pub(crate) async fn put_or_get_plugin_config<R: Runtime>(
     app: tauri::AppHandle<R>,
     payload: String,
     iv: String,
-) -> Value {
-    let state = app.state::<Arc<RwLock<PluginsState>>>();
-    let mut data = state.write().await;
+) -> serde_json::Value {
+    let root_token = {
+        let state = app.state::<Arc<RwLock<PluginsState>>>();
+        let data = state.read().await;
+        data.root_token
+    };
 
     #[derive(Deserialize)]
     #[serde(rename_all = "camelCase")]
     struct Input {
         plugin_id: String,
+        /// The pattern is similar [sync_main_layout]'s pattern
+        ///
+        /// If new_config is missing, this acts as a `GET`  
+        /// If new_config is present, this acts as a `PUT`  
+        new_config: Option<GenericPluginSettings>,
     }
-    let payload = match commands_armor::decrypt_str::<Input>(&data.root_token, &iv, &payload) {
+    let payload = match commands_armor::decrypt_str::<Input>(&root_token, &iv, &payload) {
         Ok(x) => x,
         Err(e) => return e.into(),
     };
 
-    let mut settings = match GenericPluginSettings::get_by_id(&app, &payload.plugin_id) {
-        Ok(it) => it,
-        Err(err) => {
-            error!("failed to get generic plugin settings by ID: {err}");
-            return json!({"success": false, "reason": "INTERNAL_MISSING_GENERAL_SETTINGS"});
-        }
-    }
-    .unwrap_or_default();
-    if !settings.enabled {
-        settings.enabled = true;
-        _ = settings.commit(&app, &payload.plugin_id)
-    }
-
-    match data.start(payload.plugin_id, &app).await {
-        Ok(_) => {
-            json!({"success": true})
-        }
+    let current_state = match GenericPluginSettings::get_by_id(&app, &payload.plugin_id) {
+        Ok(None) => GenericPluginSettings::default(),
+        Ok(Some(x)) => x,
         Err(e) => {
-            json!({"success": false, "reason": e.to_string()})
+            let e_str = e.to_string();
+            error!("failed to get plugin settings: {e}");
+            return json!({"success": false, "reason": "ERROR_READING_GENERIC_PLUGIN_SETTINGS", "context": e_str});
         }
+    };
+
+    let data_to_return = match payload.new_config {
+        Some(e) => {
+            if e != current_state {
+                // We have a delta!
+                if let Err(err) = e.commit(&app, &payload.plugin_id) {
+                    let e_str = err.to_string();
+                    error!("failed to get plugin settings: {err}");
+                    return json!({"success": false, "reason": "ERROR_COMMIT_GENERIC_PLUGIN_SETTINGS", "context": e_str});
+                }
+                // and because we made a change, we need to let the reconciler know about it!
+                _ = app
+                    .state::<PluginReconcileReceiver>()
+                    .tx
+                    .send(payload.plugin_id.clone())
+                    .await;
+            }
+            e
+        }
+        None => current_state,
+    };
+
+    match commands_armor::encrypt(&root_token, &data_to_return) {
+        Ok(encrypted_with_iv) => encrypted_with_iv,
+        Err(e) => return e.into(),
     }
 }
 
+/// This lets the frontend update its internal state. This is the curernt status of the plugin that is not persisted.
+/// It's mostly used to let the settings pane know the current status.
+/// The response contains **all** plugins.
+///
+/// Note that the backend doesn't really "care" about what is in here. The frontend has full ownership of the data.
+/// The only exception is that on frontend reload we empty the object
+/// Because the backend doesnt care about the structure, we simply set a serde_json::Value here
 #[tauri::command]
-pub(crate) async fn finalize_start_plugin<R: Runtime>(
+pub(crate) async fn put_or_get_frontend_state<R: Runtime>(
     app: tauri::AppHandle<R>,
     payload: String,
     iv: String,
-) -> Value {
-    let state = app.state::<Arc<RwLock<PluginsState>>>();
-    let mut data = state.write().await;
+) -> serde_json::Value {
+    let root_token = {
+        let state = app.state::<Arc<RwLock<PluginsState>>>();
+        let data = state.read().await;
+        data.root_token
+    };
 
     #[derive(Deserialize)]
     #[serde(rename_all = "camelCase")]
     struct Input {
-        plugin_id: String,
-    }
-    let payload = match commands_armor::decrypt_str::<Input>(&data.root_token, &iv, &payload) {
-        Ok(x) => x,
-        Err(e) => return e.into(),
-    };
-
-    match data.finalize_start(payload.plugin_id, &app).await {
-        Ok(_) => {
-            json!({"success": true})
-        }
-        Err(e) => {
-            json!({"success": false, "reason": e.to_string()})
-        }
-    }
-}
-
-#[tauri::command]
-pub(crate) async fn start_plugin_failed<R: Runtime>(
-    app: tauri::AppHandle<R>,
-    payload: String,
-    iv: String,
-) -> Value {
-    let state = app.state::<Arc<RwLock<PluginsState>>>();
-    let mut data = state.write().await;
-    #[derive(Deserialize)]
-    #[serde(rename_all = "camelCase")]
-    struct Input {
-        plugin_id: String,
-        reasons: Vec<String>,
-    }
-    let payload = match commands_armor::decrypt_str::<Input>(&data.root_token, &iv, &payload) {
-        Ok(x) => x,
-        Err(e) => return e.into(),
-    };
-    match data
-        .start_failed(payload.plugin_id, payload.reasons, &app)
-        .await
-    {
-        Ok(_) => {
-            json!({"success": true})
-        }
-        Err(e) => {
-            json!({"success": false, "reason": e.to_string()})
-        }
-    }
-}
-
-#[tauri::command]
-pub(crate) async fn stop_plugin<R: Runtime>(
-    app: tauri::AppHandle<R>,
-    payload: String,
-    iv: String,
-) -> Value {
-    let state = app.state::<Arc<RwLock<PluginsState>>>();
-    let mut data = state.write().await;
-    #[derive(Deserialize)]
-    #[serde(rename_all = "camelCase")]
-    struct Input {
-        plugin_id: String,
-    }
-    let payload = match commands_armor::decrypt_str::<Input>(&data.root_token, &iv, &payload) {
-        Ok(x) => x,
-        Err(e) => return e.into(),
-    };
-
-    let mut settings = match GenericPluginSettings::get_by_id(&app, &payload.plugin_id) {
-        Ok(it) => it,
-        Err(err) => {
-            error!("failed to get generic plugin settings by ID: {err}");
-            return json!({"success": false, "reason": "INTERNAL_MISSING_GENERAL_SETTINGS"});
-        }
-    }
-    .unwrap_or_default();
-    if settings.enabled {
-        settings.enabled = false;
-        _ = settings.commit(&app, &payload.plugin_id)
+        /// The pattern is similar [sync_main_layout]'s pattern
+        ///
+        /// If new_config is missing, this acts as a `GET`  
+        /// If new_config is present, this acts as a `PUT`  
+        new_config: Option<serde_json::Value>,
     }
 
-    match data.stop(payload.plugin_id, &app).await {
-        Ok(_) => {
-            json!({"success": true})
-        }
-        Err(e) => {
-            json!({"success": false, "reason": e.to_string()})
-        }
-    }
-}
-
-#[tauri::command]
-pub(crate) async fn finalize_stop_plugin<R: Runtime>(
-    app: tauri::AppHandle<R>,
-    payload: String,
-    iv: String,
-) -> Value {
-    let state = app.state::<Arc<RwLock<PluginsState>>>();
-
-    #[derive(Deserialize)]
-    #[serde(rename_all = "camelCase")]
-    struct Input {
-        plugin_id: String,
-    }
-    let mut data = state.write().await;
-    let payload = match commands_armor::decrypt_str::<Input>(&data.root_token, &iv, &payload) {
-        Ok(x) => x,
-        Err(e) => return e.into(),
-    };
-    match data.finalize_stop(payload.plugin_id, &app).await {
-        Ok(_) => {
-            json!({"success": true})
-        }
-        Err(e) => {
-            json!({"success": false, "reason": e.to_string()})
-        }
-    }
+    todo!()
 }
 
 #[tauri::command]
@@ -738,14 +679,18 @@ pub(crate) async fn sync_main_layout<R: Runtime>(
     iv: String,
 ) -> Value {
     let state = app.state::<Arc<RwLock<PluginsState>>>();
-    let data = state.read().await;
+    let root_token = {
+        let data = state.read().await;
+        data.root_token
+    };
+
     let layout = {
         #[derive(Deserialize)]
         #[serde(rename_all = "camelCase")]
         struct Input {
             layout: Option<PluginsUiConfig>,
         }
-        match commands_armor::decrypt_str::<Input>(&data.root_token, &iv, &payload) {
+        match commands_armor::decrypt_str::<Input>(&root_token, &iv, &payload) {
             Ok(x) => x.layout,
             Err(e) => return e.into(),
         }
@@ -756,7 +701,7 @@ pub(crate) async fn sync_main_layout<R: Runtime>(
         Err(e) => return json!({"success": true, "data": format!("failed to sync ui layout: {e}")}),
     };
 
-    match commands_armor::encrypt(&data.root_token, &resp) {
+    match commands_armor::encrypt(&root_token, &resp) {
         Ok(encrypted_with_iv) => encrypted_with_iv,
         Err(e) => e.into(),
     }
