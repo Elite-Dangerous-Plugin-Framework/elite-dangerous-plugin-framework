@@ -13,6 +13,7 @@ use tracing::{error, info, warn};
 use crate::{
     plugins::{commands_armor, plugin_settings, PluginReconcileReceiver, PluginStateSource},
     updates::{PendingUpdate, ReleaseChannel},
+    FrontendPluginsState,
 };
 
 use super::{
@@ -412,7 +413,7 @@ pub(crate) async fn put_or_get_plugin_config<R: Runtime>(
 
     match commands_armor::encrypt(&root_token, &data_to_return) {
         Ok(encrypted_with_iv) => encrypted_with_iv,
-        Err(e) => return e.into(),
+        Err(e) => e.into(),
     }
 }
 
@@ -445,7 +446,31 @@ pub(crate) async fn put_or_get_frontend_state<R: Runtime>(
         new_config: Option<serde_json::Value>,
     }
 
-    todo!()
+    let payload = match commands_armor::decrypt_str::<Input>(&root_token, &iv, &payload) {
+        Ok(x) => x,
+        Err(e) => return e.into(),
+    };
+
+    let current_state = app.state::<Arc<RwLock<FrontendPluginsState>>>();
+
+    let (response, emit) = if let Some(x) = payload.new_config {
+        let mut lock = current_state.write().await;
+        lock.data = x.clone();
+        (x, true)
+    } else {
+        (current_state.read().await.data.clone(), false)
+    };
+
+    let payload = match commands_armor::encrypt(&root_token, &response) {
+        Ok(encrypted_with_iv) => encrypted_with_iv,
+        Err(e) => e.into(),
+    };
+
+    if emit {
+        _ = app.emit("core/plugins/frontendUpdate", &payload);
+    }
+
+    payload
 }
 
 #[tauri::command]

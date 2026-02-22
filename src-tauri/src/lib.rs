@@ -8,6 +8,7 @@ use std::{
 };
 
 use plugins::{FrontendPluginsState, PluginsState};
+use serde_json::json;
 use tauri::{
     menu::{MenuBuilder, MenuItem, MenuItemBuilder},
     tray::TrayIconBuilder,
@@ -103,11 +104,21 @@ pub fn run() {
                 info!("page load finished. id: {}", w)
             }
             let state = window.app_handle().state::<Arc<RwLock<PluginsState>>>();
-            let mut data = state.blocking_write();
 
+            let mut data = state.blocking_write();
             match w {
                 "settings" => data.allow_request_root_key_settings = true,
-                "main" => data.allow_request_root_key_main = true,
+                "main" => {
+                    let frontend_state = window
+                        .app_handle()
+                        .state::<Arc<RwLock<FrontendPluginsState>>>();
+                    data.allow_request_root_key_main = true;
+                    {
+                        let mut frontend_data = frontend_state.blocking_write();
+                        // A reload of the frontend causes us to "lose" the frontend state.
+                        frontend_data.data = json!({});
+                    }
+                }
                 _ => {}
             }
         })
@@ -126,6 +137,7 @@ pub fn run() {
             plugins::commands::put_or_get_plugin_config,
             plugins::commands::sync_main_layout,
             plugins::commands::reread_active_journal,
+            plugins::commands::put_or_get_frontend_state,
             plugins::commands::write_setting,
             plugins::commands::read_setting,
             plugins::commands::get_plugin,

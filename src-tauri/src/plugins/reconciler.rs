@@ -1,4 +1,3 @@
-use std::hash::DefaultHasher;
 use std::path::Path;
 use std::sync::Arc;
 use std::{path::PathBuf, str::FromStr};
@@ -6,16 +5,15 @@ use std::{path::PathBuf, str::FromStr};
 use anyhow::anyhow;
 use anyhow::Result;
 use dirs::data_local_dir;
-use itertools::Itertools;
 use sha2::{Digest, Sha256};
 use tauri::path::BaseDirectory;
+use tauri::Manager;
 use tauri::{AppHandle, Wry};
-use tauri::{Emitter, Manager};
 use tauri_plugin_store::StoreExt;
 use tokio::fs::File;
 use tokio::io::AsyncReadExt;
 use tokio::sync::RwLock;
-use tracing::warn;
+use tracing::{debug, instrument, warn};
 use walkdir::WalkDir;
 
 use crate::plugins::generic_plugin_settings::GenericPluginSettings;
@@ -80,6 +78,7 @@ async fn hash_directory(root_path: &Path) -> anyhow::Result<String> {
 /// Reconciles the desired state onto the actual state for a Plugin.  
 /// This only concerns the **backend** state.
 /// Returns true if a change occurred, else false.
+#[instrument(skip(app_handle))]
 pub(super) async fn reconcile_specific_plugin(
     plugin_id: String,
     app_handle: &AppHandle<Wry>,
@@ -111,7 +110,7 @@ pub(super) async fn reconcile_specific_plugin(
             let mut manifest =
                 PluginManifest::try_read_from_file(&plugin_base_dir.join("manifest.json")).await?;
             if is_internal_plugin {
-                manifest.inject_embedded_version(&app_handle);
+                manifest.inject_embedded_version(app_handle);
             }
             // At this point we still have the re-eval the frontend dir
             let frontend_hash = hash_directory(&plugin_base_dir.join("frontend")).await?;
@@ -139,7 +138,9 @@ pub(super) async fn reconcile_specific_plugin(
 
     let mut warrants_emit = false;
     match desired_state {
-        Err(e) => {}
+        Err(e) => {
+            tracing::error!("failed to reconcile: {e}")
+        }
         Ok(None) => {
             if current_state.is_some() {
                 // if we're here, we want to disable and completely "disown" the plugin but its currently running
@@ -167,6 +168,7 @@ pub(super) async fn reconcile_specific_plugin(
             };
             if needs_update {
                 // we have a difference!
+                debug!("Plugin {} was updated in reconcile", &plugin_id);
                 let state = app_handle.state::<Arc<RwLock<PluginsState>>>();
                 let mut data = state.write().await;
                 _ = data.plugin_states.insert(plugin_id.clone(), desired_state);

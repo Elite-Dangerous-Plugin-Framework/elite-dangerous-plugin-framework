@@ -1,10 +1,8 @@
-use anyhow::anyhow;
 use base64::{prelude::BASE64_STANDARD_NO_PAD, Engine};
-use dirs::data_local_dir;
-use itertools::Itertools;
 use notify::{RecommendedWatcher, Watcher};
 use plugin_manifest::PluginManifest;
 use rand::RngCore;
+use reconciler::get_user_plugins_dir;
 use schemars::JsonSchema;
 use serde::Serialize;
 use serde_json::{json, Value};
@@ -12,13 +10,11 @@ use std::{
     collections::{HashMap, HashSet},
     fmt::Debug,
     path::{Component, Path, PathBuf},
-    str::FromStr,
     sync::{Arc, OnceLock},
     time::Duration,
 };
 use tauri::{async_runtime::Sender, AppHandle, Emitter, Manager, Runtime, Wry};
-use tauri_plugin_store::StoreExt;
-use tokio::sync::RwLock;
+use tokio::{fs, sync::RwLock};
 use tokio::{sync::mpsc, time::sleep};
 use tracing::{error, info, instrument, warn};
 
@@ -53,16 +49,7 @@ pub(super) async fn spawn_reconciler_blocking(app_state: &AppHandle<Wry>) -> () 
     // The App manages our Plugin Reconcile Receiver. This means we can trigger a reconcile from whereever in our App.
     app_state.manage::<PluginReconcileReceiver>(plugin_reconciler_receiver);
 
-    let user_plugin_dir = app_state
-        .store("store.json")
-        .map_err(|x| anyhow!("couldn't get store: {x}"))
-        .unwrap()
-        .get("plugin_dir")
-        .and_then(|x| {
-            let x = x.to_string();
-            PathBuf::from_str(&x).ok()
-        })
-        .unwrap_or(data_local_dir().unwrap().join("edpf-plugins"));
+    let user_plugin_dir = get_user_plugins_dir(app_state).unwrap();
     let moved_user_plugin_dir = user_plugin_dir.clone();
 
     // Note that we only watch for changes in User plugins.
@@ -80,6 +67,7 @@ pub(super) async fn spawn_reconciler_blocking(app_state: &AppHandle<Wry>) -> () 
                     _ => None,
                 };
                 if let Some(x) = plugin_in_need_of_update {
+                    info!("plugin in need of update: {}", &x);
                     if let Err(x) = watcher_tx.try_send(x) {
                         match x {
                             mpsc::error::TrySendError::Full(_) => {
@@ -100,15 +88,7 @@ pub(super) async fn spawn_reconciler_blocking(app_state: &AppHandle<Wry>) -> () 
     )
     .unwrap();
     // At the start, lets also reconcile ALL plugins
-    let existing_plugin_ids = {
-        let state = app_state.state::<Arc<RwLock<PluginsState>>>();
-        let data = state.read().await;
-        data.plugin_states.keys().cloned().collect_vec()
-    };
-    for plugin in existing_plugin_ids {
-        tx.send(plugin).await.unwrap();
-    }
-
+    // This means looking at the user dir and our embedded plugins
     // Check that the Plugin Dir exists. If it doesn't, create it.
     if !user_plugin_dir.exists() {
         info!(
@@ -117,6 +97,30 @@ pub(super) async fn spawn_reconciler_blocking(app_state: &AppHandle<Wry>) -> () 
         );
         std::fs::create_dir_all(&user_plugin_dir).unwrap();
     }
+
+    let mut existing_plugin_ids = vec![];
+
+    for x in internal_plugin_ids() {
+        existing_plugin_ids.push(x.to_string());
+    }
+
+    for maybe_plugin in std::fs::read_dir(&user_plugin_dir).unwrap().flatten() {
+        match fs::metadata(maybe_plugin.path()).await {
+            Ok(x) => {
+                if !x.is_dir() {
+                    continue;
+                }
+            }
+            Err(_) => continue,
+        }
+        let plugin_name = maybe_plugin.file_name().to_string_lossy().to_string();
+        existing_plugin_ids.push(plugin_name);
+    }
+
+    for plugin in existing_plugin_ids {
+        tx.send(plugin).await.unwrap();
+    }
+
     watcher
         .watch(&user_plugin_dir, notify::RecursiveMode::Recursive)
         .unwrap();
@@ -148,8 +152,15 @@ pub(super) async fn spawn_reconciler_blocking(app_state: &AppHandle<Wry>) -> () 
                 }
 
                 if any_change {
-                    // TODO: emit update!
-                    _ = app_state.emit("core/plugins/update", json!({}))
+                    let state = app_state.state::<Arc<RwLock<PluginsState>>>();
+                    let (payload, encryption_token) = {
+                        let data = state.read().await;
+                        (data.plugin_states.clone(), data.root_token)
+                    };
+                    _ = app_state.emit("core/plugins/update", match commands_armor::encrypt(&encryption_token, &payload) {
+                        Ok(encrypted_with_iv) => encrypted_with_iv,
+                        Err(e) => e.into(),
+                    })
                 }
             }
 
@@ -161,6 +172,7 @@ pub(super) async fn spawn_reconciler_blocking(app_state: &AppHandle<Wry>) -> () 
 /// Returns the plugin ID if any of the paths matches:
 /// 1. $base/*/manifest.json
 /// 2. $base/*/frontend/**
+#[instrument(skip(paths))]
 fn matches_relevant_files(paths: &[PathBuf], base: &Path) -> Option<String> {
     for p in paths {
         // Must start with the base directory
@@ -189,6 +201,7 @@ fn matches_relevant_files(paths: &[PathBuf], base: &Path) -> Option<String> {
         if comps.clone().count() == 1 {
             if let Some(last) = comps.peek() {
                 if last.as_os_str() == "manifest.json" {
+                    info!("found change in manifest");
                     return Some(plugin_id);
                 }
             }
@@ -198,6 +211,7 @@ fn matches_relevant_files(paths: &[PathBuf], base: &Path) -> Option<String> {
         if let Some(first_after) = comps.peek() {
             if first_after.as_os_str() == "frontend" {
                 // Anything under frontend/, including nested directories, matches
+                info!("found change in frontend");
                 return Some(plugin_id);
             }
         }
@@ -209,9 +223,7 @@ fn matches_relevant_files(paths: &[PathBuf], base: &Path) -> Option<String> {
 #[derive(Serialize, Clone)]
 pub(crate) struct FrontendPluginsState {
     /// This data is arbitrary, it's structure is entirely owned by the frontend
-    /// The only times the backend writes this is
-    /// - on frontend reload, setting it to an empty object `{}`
-    /// - when prompted via a command by the frontend
+    /// The only time the backend writes this is when prompted via a command by the frontend
     pub(crate) data: serde_json::Value,
 }
 
@@ -344,16 +356,6 @@ impl PluginState {
     fn frontend_path(&self) -> PathBuf {
         self.plugin_dir.join("frontend")
     }
-}
-
-#[derive(Debug, Serialize, Clone, PartialEq, Eq, JsonSchema)]
-#[serde(tag = "type")]
-pub(crate) enum PluginCurrentState {
-    Disabled {},
-    Starting { metadata: Vec<String> },
-    FailedToStart { reasons: Vec<String> },
-    Running {},
-    Disabling {},
 }
 
 #[derive(Debug, Serialize, Clone, PartialEq, Eq, JsonSchema)]
