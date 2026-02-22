@@ -50,7 +50,7 @@ impl ParsedKey {
 pub(crate) fn parse_key(input: &str) -> Result<ParsedKey, String> {
     if !input
         .chars()
-        .all(|c| c.is_alphanumeric() || c == '.' || c == '_')
+        .all(|c| c.is_alphanumeric() || c == '.' || c == '_' || c == '-')
     {
         return Err("KEY_INVALID_FORMAT".to_string());
     }

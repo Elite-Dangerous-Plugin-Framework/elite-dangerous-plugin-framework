@@ -7,7 +7,6 @@ use std::{
     io,
     path::PathBuf,
     sync::Arc,
-    thread,
     time::Duration,
 };
 use tauri::{AppHandle, Emitter, Manager, Wry};
@@ -41,7 +40,7 @@ pub(super) async fn event_watchdog(app_handle: &AppHandle<Wry>) -> ! {
             match find_recently_modified_log_files(&journal_dir, last_checked_time) {
                 Err(e) => {
                     error!("Failed to get recently modified log files. Skipping: {e}");
-                    thread::sleep(Duration::from_secs(30));
+                    sleep(Duration::from_secs(30)).await;
                     continue;
                 }
                 Ok(x) => x.into_iter().filter_map(|x| {

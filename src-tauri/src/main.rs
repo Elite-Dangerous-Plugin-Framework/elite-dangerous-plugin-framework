@@ -16,11 +16,13 @@ fn main() {
         .with_thread_names(true)
         .init();
      */
+    //console_subscriber::init();
+
     tracing_subscriber::fmt()
         .pretty()
         .with_line_number(true)
         .with_env_filter(
-            EnvFilter::new("info")
+            EnvFilter::new("debug")
                 .add_directive("notify=off".parse().unwrap())
                 .add_directive("notify::inotify=off".parse().unwrap()),
         )

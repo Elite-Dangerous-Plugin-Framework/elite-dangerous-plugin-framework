@@ -10,12 +10,12 @@ import { ZondiconsFolder } from "../icons/pluginType";
 import { CommandWrapper } from "../commands/commandWrapper";
 import { getRootToken } from "../commands/getRootToken";
 import { useTranslation } from "react-i18next";
+import { FrontendPluginState } from "../types/FrontendPluginState";
 
 export default function Settings() {
-  const [pluginStates, setPluginStates] =
-    useState<(PluginState & { id: string })[]>();
+  const [backendState, setBackendState] = useState<Record<string, PluginState> | null>(null)
+  const [frontendState, setFrontendState] = useState<Record<string, FrontendPluginState> | null>(null)
 
-  const [activeId, setActiveId] = useState<string>();
   const commandWrapperRef = useRef<CommandWrapper>();
 
   const { t, i18n } = useTranslation("settings");
@@ -30,6 +30,7 @@ export default function Settings() {
         if (!p.success) {
           throw new Error("failed to fetch all plugins: " + p.reason);
         }
+        console.log({ p })
         const result = Object.entries(p.data)
           .map(([id, v]) => ({ ...v, id }))
           .sort((a, b) => a.id.localeCompare(b.id));
@@ -223,9 +224,8 @@ function SettingsSidebarPlugin({
           ? PluginStateUIData[currentStateType].colour + "40"
           : "unset",
       }}
-      className={`inline-flex items-center gap-1 flex-row w-full p-2 text-xs cursor-pointer hover:bg-white/10 ${
-        selected ? " underline" : ""
-      }`}
+      className={`inline-flex items-center gap-1 flex-row w-full p-2 text-xs cursor-pointer hover:bg-white/10 ${selected ? " underline" : ""
+        }`}
     >
       <StatusIndicator state={currentStateType} />
       <p className=" inline-flex justify-baseline items-center gap-1">{name}</p>

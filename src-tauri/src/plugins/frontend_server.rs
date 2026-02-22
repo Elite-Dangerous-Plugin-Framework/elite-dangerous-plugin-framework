@@ -1,9 +1,4 @@
-use std::{
-    collections::HashMap,
-    net::SocketAddr,
-    path::{Component, Path as StdPath, PathBuf},
-    sync::Arc,
-};
+use std::{collections::HashMap, net::SocketAddr, sync::Arc};
 
 use super::{PluginState, PluginsState};
 use anyhow::anyhow;
@@ -100,7 +95,11 @@ async fn serve_asset(
             return StatusCode::NOT_FOUND.into_response();
         }
     };
-    let path_to_resource = safe_join(&root, StdPath::new(&tail));
+    let path_to_resource = root.join(tail);
+    if !path_to_resource.starts_with(root) {
+        return StatusCode::FORBIDDEN.into_response();
+    }
+
     let bytes = match tokio::fs::read(&path_to_resource).await {
         Ok(bytes) => bytes,
         Err(_) => return StatusCode::NOT_FOUND.into_response(),
@@ -119,21 +118,4 @@ async fn serve_asset(
             .body(Body::from(bytes))
             .unwrap(),
     }
-}
-
-fn safe_join(root: &StdPath, tail: &StdPath) -> PathBuf {
-    let mut out = PathBuf::from(root);
-
-    for comp in tail.components() {
-        match comp {
-            Component::Normal(p) => out.push(p),
-            Component::CurDir => {}
-            // Reject anything that would escape or change drive/root
-            Component::ParentDir | Component::RootDir | Component::Prefix(_) => {
-                // Skip/ignore to prevent traversal
-                continue;
-            }
-        }
-    }
-    out
 }

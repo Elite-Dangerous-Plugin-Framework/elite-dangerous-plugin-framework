@@ -1,8 +1,12 @@
 //! This module defines what a Plugin Manifest looks like
 
+use std::path::Path;
+
+use anyhow::anyhow;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use tauri::Wry;
+use tokio::{fs::File, io::AsyncReadExt};
 
 /// Each Plugin must have a `manifest.json` which describes the plugin, it's requirements, updating strategies, and so on.
 #[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Eq, JsonSchema)]
@@ -31,6 +35,8 @@ pub(crate) struct PluginManifestV1Alpha {
     pub(crate) versions: Option<Vec<PluginVersionOption>>,
     /// This contains the strategy the plugin should take during updating to find out if there is a new update
     pub(crate) remote_manifest: Option<PluginRemoteManifestResolutionStrategy>,
+    /// An optional property that defines
+    pub(crate) additional_capabilities: Option<Vec<PluginConfigurationCapabilityV1Alpha>>,
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Eq, JsonSchema)]
@@ -45,14 +51,8 @@ pub(crate) struct PluginVersionOption {
 
 #[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Eq, JsonSchema)]
 pub(crate) enum PluginRemoteManifestResolutionStrategy {
-    /// Assumes that each release also bundles a `manifest.json`.
-    GitReleaseAsset,
     /// Will call a URL, expecting a manifest.json
     Http { address: String },
-    /// Use this if you publish your plugin to the registry
-    OfficialRegistry,
-    /// same as official registry, expect that you can point to a different registry
-    UnofficialRegistry { address: String },
 }
 
 impl PluginManifest {
@@ -61,4 +61,22 @@ impl PluginManifest {
             PluginManifest::V1Alpha(x) => x.version = Some(app.package_info().version.to_string()),
         }
     }
+    /// This tries to read the Plugin Manifest from the FS.
+    pub(crate) async fn try_read_from_file(path_to_manifest: &Path) -> anyhow::Result<Self> {
+        let mut buf = vec![];
+        File::open(path_to_manifest)
+            .await
+            .map_err(|x| anyhow!("failed to open manifest file. does it exists? {x}"))?
+            .read_to_end(&mut buf)
+            .await
+            .map_err(|x| anyhow!("failed to read manifest into buffer: {x}"))?;
+
+        serde_json::from_slice(&buf).map_err(|x| {
+            anyhow!("failed to parse manifest. does it's structure follow the spec?: {x}")
+        })
+    }
 }
+
+#[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Eq, JsonSchema)]
+#[serde(tag = "type")]
+pub(crate) enum PluginConfigurationCapabilityV1Alpha {}
